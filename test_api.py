@@ -1,11 +1,18 @@
 import requests
+import pandas as pd
 from requests.auth import HTTPBasicAuth
+import os
+from dotenv import load_dotenv
 
-JIRA_URL = "https://carboncars.atlassian.net"
-EMAIL = ""
-API_TOKEN = ""
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
 
-jql = "project = MANTA"
+JIRA_URL = os.getenv("JIRA_URL")
+EMAIL = os.getenv("JIRA_EMAIL")
+API_TOKEN = os.getenv("JIRA_API_TOKEN")
+
+# FILTRO JQL
+jql = 'project = MANTA AND status IN ("A Produzir", "Liberado Engenharia")'
 
 url = f"{JIRA_URL}/rest/api/3/search/jql"
 
@@ -14,22 +21,20 @@ headers = {
 }
 
 next_page = None
-all_issues = []
+all_rows = []
 
 while True:
 
     params = {
         "jql": jql,
         "maxResults": 100,
-
-        # CAMPOS QUE QUER TRAZER
         "fields": [
             "issuetype",
             "summary",
             "status",
-            "customfield_SITUACAO",
-            "customfield_VEICULO",
-            "customfield_PREVISAO"
+            "customfield_10039",   # SITUAÇÃO
+            "customfield_11298",   # VEICULO
+            "customfield_11459"    # DT PREVISÃO ENTREGA
         ]
     }
 
@@ -44,41 +49,66 @@ while True:
     )
 
     data = response.json()
-
     issues = data.get("issues", [])
-    all_issues.extend(issues)
 
-    print("Cartões coletados:", len(all_issues))
+    for issue in issues:
+
+        fields = issue.get("fields", {})
+
+        # Tipo
+        tipo = fields.get("issuetype", {}).get("name", "")
+
+        # Chave e link
+        key = issue.get("key", "")
+        link = f"{JIRA_URL}/browse/{key}"
+        chave_excel = f'=HYPERLINK("{link}", "{key}")'
+
+        # Campos padrão
+        resumo = fields.get("summary", "")
+        status = fields.get("status", {}).get("name", "")
+
+        # SITUAÇÃO (dropdown Jira)
+        situacao_raw = fields.get("customfield_10039")
+        print(f"DEBUG - Issue {key} - situacao_raw: {situacao_raw}, type: {type(situacao_raw)}")
+        if isinstance(situacao_raw, dict):
+            situacao = situacao_raw.get("value", "")
+        else:
+            situacao = situacao_raw or ""
+        print(f"DEBUG - Issue {key} - situacao final: {situacao}")
+
+        # VEICULO (dropdown ou texto)
+        veiculo_raw = fields.get("customfield_11298")
+        if isinstance(veiculo_raw, dict):
+            veiculo = veiculo_raw.get("value", "")
+        else:
+            veiculo = veiculo_raw or ""
+
+        # DATA PREVISÃO
+        previsao = fields.get("customfield_11459", "")
+
+        all_rows.append({
+            "Tipo de item": tipo,
+            "Chave": chave_excel,
+            "Resumo": resumo,
+            "Status": status,
+            "SITUAÇÃO": situacao,
+            "Veiculo - Marca/Modelo": veiculo,
+            "DT. PREVISÃO ENTREGA": previsao
+        })
+
+    print("Cartões coletados:", len(all_rows))
 
     if data.get("isLast"):
         break
 
     next_page = data.get("nextPageToken")
 
-print("Total de cartões:", len(all_issues))
+print("Total de cartões:", len(all_rows))
 
+# Criar dataframe
+df = pd.DataFrame(all_rows)
 
-# GERAR TXT ORGANIZADO
-with open("jira_cards.txt", "w", encoding="utf-8") as f:
+# Gerar Excel
+df.to_excel("jira_cards.xlsx", index=False)
 
-    # cabeçalho
-    f.write("Tipo de item\tChave\tResumo\tStatus\tSITUAÇÃO\tVeiculo - Marca/Modelo\tDT. PREVISÃO ENTREGA\n")
-
-    for issue in all_issues:
-
-        fields = issue.get("fields", {})
-
-        tipo = fields.get("issuetype", {}).get("name", "")
-        chave = issue.get("key", "")
-        resumo = fields.get("summary", "")
-        status = fields.get("status", {}).get("name", "")
-
-        situacao = fields.get("customfield_SITUACAO", "")
-        veiculo = fields.get("customfield_VEICULO", "")
-        previsao = fields.get("customfield_PREVISAO", "")
-
-        linha = f"{tipo}\t{chave}\t{resumo}\t{status}\t{situacao}\t{veiculo}\t{previsao}\n"
-
-        f.write(linha)
-
-print("Arquivo jira_cards.txt criado!")
+print("Arquivo jira_cards.xlsx criado com sucesso!")
