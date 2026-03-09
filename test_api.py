@@ -140,3 +140,21 @@ for idx, link in enumerate(all_links, start=2):
 wb.save(filename)
 
 print(f"Arquivo {filename} criado com sucesso!")
+
+
+# Filtro para identificar cartões sem previsão de entrega preenchida
+# Filtrar linhas onde DT. PREVISÃO ENTREGA está vazia
+cards_sem_previsao = df[df["DT. PREVISÃO ENTREGA"].isna() | (df["DT. PREVISÃO ENTREGA"] == "")]
+
+# Selecionar apenas as colunas desejadas
+cards_update = cards_sem_previsao[[
+    "Tipo de issue",
+    "Chave",
+    "Resumo",
+    "DT. PREVISÃO ENTREGA"
+]]
+
+# Salvar em novo arquivo Excel
+cards_update.to_excel("update_cards.xlsx", index=False)
+
+print("Arquivo update_cards.xlsx criado com sucesso!")
