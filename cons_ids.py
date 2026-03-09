@@ -4,6 +4,8 @@ from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from dotenv import load_dotenv
 import os
+from openpyxl import load_workbook
+from openpyxl.styles import Font
 
 load_dotenv()
 
@@ -22,6 +24,7 @@ headers = {
 
 next_page = None
 all_rows = []
+all_links = []  # Para guardar os links
 
 while True:
 
@@ -61,7 +64,6 @@ while True:
         # Chave e link
         key = issue.get("key", "")
         link = f"{JIRA_URL}/browse/{key}"
-        chave_excel = f'=HYPERLINK("{link}", "{key}")'
 
         # Campos padrão
         resumo = fields.get("summary", "")
@@ -100,13 +102,14 @@ while True:
 
         all_rows.append({
             "Tipo de item": tipo,
-            "Chave": chave_excel,
+            "Chave": link,
             "Resumo": resumo,
             "Status": status,
             "SITUAÇÃO": situacao,
             "Veiculo - Marca/Modelo": veiculo,
             "DT. PREVISÃO ENTREGA": previsao
         })
+        all_links.append(link)
 
     print("Cartões coletados:", len(all_rows))
 
@@ -121,6 +124,19 @@ print("Total de cartões:", len(all_rows))
 df = pd.DataFrame(all_rows)
 
 # Gerar Excel
-df.to_excel("jira_cards.xlsx", index=False)
+filename = "jira_cards.xlsx"
+df.to_excel(filename, index=False)
 
-print("Arquivo jira_cards.xlsx criado com sucesso!")
+# Adicionar hyperlinks na coluna Chave
+wb = load_workbook(filename)
+ws = wb.active
+
+# Percorrer as linhas e adicionar hyperlinks (começando da linha 2, pulando o cabeçalho)
+for idx, link in enumerate(all_links, start=2):
+    cell = ws[f'B{idx}']  # Coluna B é a coluna "Chave"
+    cell.hyperlink = link
+    cell.style = "Hyperlink"
+
+wb.save(filename)
+
+print(f"Arquivo {filename} criado com sucesso!")
