@@ -12,7 +12,7 @@ JIRA_URL = os.getenv("JIRA_URL")
 EMAIL = os.getenv("EMAIL")
 API_TOKEN = os.getenv("API_TOKEN")
 
-ARQUIVO = r".\\archives\\update_cards.xlsx"
+ARQUIVO = r".\\src\\data_update\\update_cards.xlsx"
 
 CAMPO_PREVISAO = "customfield_10245"
 
