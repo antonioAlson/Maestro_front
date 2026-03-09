@@ -124,7 +124,7 @@ print("Total de cartões:", len(all_rows))
 df = pd.DataFrame(all_rows)
 
 # Gerar Excel
-filename = "jira_cards.xlsx"
+filename = ".\\archives\\jira_cards.xlsx"
 df.to_excel(filename, index=False)
 
 # Adicionar hyperlinks na coluna Chave
@@ -155,6 +155,6 @@ cards_update = cards_sem_previsao[[
 ]]
 
 # Salvar em novo arquivo Excel
-cards_update.to_excel("update_cards.xlsx", index=False)
+cards_update.to_excel(".\\archives\\update_cards.xlsx", index=False)
 
 print("Arquivo update_cards.xlsx criado com sucesso!")
