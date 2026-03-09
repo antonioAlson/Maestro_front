@@ -101,6 +101,7 @@ while True:
             previsao = ""
 
         all_rows.append({
+            "ID": key,
             "Tipo de item": tipo,
             "Chave": link,
             "Resumo": resumo,
@@ -133,7 +134,7 @@ ws = wb.active
 
 # Percorrer as linhas e adicionar hyperlinks (começando da linha 2, pulando o cabeçalho)
 for idx, link in enumerate(all_links, start=2):
-    cell = ws[f'B{idx}']  # Coluna B é a coluna "Chave"
+    cell = ws[f'C{idx}']  # Coluna C é a coluna "Chave"
     cell.hyperlink = link
     cell.style = "Hyperlink"
 

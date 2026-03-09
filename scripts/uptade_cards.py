@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # Caminho da planilha
-arquivo = r".\\archives\\update_cards.xlsx"
+arquivo = r".\archives\update_cards.xlsx"
 
 # Ler planilha
 df = pd.read_excel(arquivo)
