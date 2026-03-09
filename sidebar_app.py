@@ -65,7 +65,7 @@ class SidebarApp:
         self.sidebar = ctk.CTkFrame(
             self.main_container,
             width=self.sidebar_width_expanded,
-            corner_radius=0
+            corner_radius=0,
         )
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
@@ -78,9 +78,11 @@ class SidebarApp:
             width=40,
             height=40,
             font=ctk.CTkFont(size=20, weight="bold"),
-            corner_radius=8
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color="#3a3a5e"
         )
-        self.toggle_btn.pack(pady=15, padx=10)
+        self.toggle_btn.pack(pady=15, padx=10, anchor="w")
         
         # Container para os botões do menu (parte superior)
         self.menu_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -106,14 +108,17 @@ class SidebarApp:
         
         # Criar botão Exit
         self.exit_btn = self.create_menu_button(self.exit_container, "exit", "Sair", self.exit_action)
-        self.exit_btn_data = (self.exit_btn, "exit", "Sair")
     
     def create_menu_button(self, container, img_key, text, command):
         """Cria um botão do menu"""
         img = self.images.get(img_key)
         
+        # Frame wrapper para controlar overflow
+        btn_wrapper = ctk.CTkFrame(container, fg_color="transparent")
+        btn_wrapper.pack(fill="x", pady=3, padx=8)
+        
         btn = ctk.CTkButton(
-            container,
+            btn_wrapper,
             text=f"  {text}",
             image=img,
             command=command,
@@ -121,9 +126,11 @@ class SidebarApp:
             height=40,
             corner_radius=8,
             font=ctk.CTkFont(size=13),
-            compound="left"
+            compound="left",
+            fg_color="transparent",
+            hover_color="#3a3a5e"
         )
-        btn.pack(fill="x", pady=3, padx=8)
+        btn.pack(fill="x")
         
         return btn
     
@@ -132,23 +139,30 @@ class SidebarApp:
         if self.sidebar_expanded:
             # Fechar sidebar - mostrar apenas ícones
             self.sidebar.configure(width=self.sidebar_width_collapsed)
-            for btn, img_key, text in self.menu_buttons:
-                btn.configure(text="")
-            # Atualizar botão Exit também
-            self.exit_btn.configure(text="")
+            self.update_button_texts("")
         else:
-            # Abrir sidebar - mostrar ícones + texto
+            # Abrir sidebar - expande primeiro, depois mostra texto
             self.sidebar.configure(width=self.sidebar_width_expanded)
-            for btn, img_key, text in self.menu_buttons:
-                btn.configure(text=f"  {text}")
-            # Atualizar botão Exit também
-            self.exit_btn.configure(text="  Sair")
+            self.root.after(50, lambda: self.update_button_texts("show"))
         
         self.sidebar_expanded = not self.sidebar_expanded
     
+    def update_button_texts(self, mode):
+        """Atualiza os textos dos botões"""
+        if mode == "":
+            # Esconder textos
+            for btn, img_key, text in self.menu_buttons:
+                btn.configure(text="")
+            self.exit_btn.configure(text="")
+        else:
+            # Mostrar textos
+            for btn, img_key, text in self.menu_buttons:
+                btn.configure(text=f"  {text}")
+            self.exit_btn.configure(text="  Sair")
+    
     def create_content_area(self):
         """Cria a área de conteúdo principal"""
-        self.content_area = ctk.CTkFrame(self.main_container, corner_radius=0)
+        self.content_area = ctk.CTkFrame(self.main_container, corner_radius=0, fg_color="#3d3d3d")
         self.content_area.pack(side="left", fill="both", expand=True)
         
         # Título da área de conteúdo
@@ -226,24 +240,6 @@ class SidebarApp:
         self.show_content(
             "⚙️ Configurações",
             "Configure as preferências do sistema de acordo com suas necessidades."
-        )
-    
-    def reports_action(self):
-        self.show_content(
-            "📈 Relatórios",
-            "Acesse relatórios detalhados e análises de dados."
-        )
-    
-    def profile_action(self):
-        self.show_content(
-            "👤 Perfil",
-            "Visualize e edite as informações do seu perfil de usuário."
-        )
-    
-    def help_action(self):
-        self.show_content(
-            "❓ Ajuda",
-            "Encontre ajuda e documentação sobre como usar o sistema."
         )
     
     def exit_action(self):
