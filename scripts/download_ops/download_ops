@@ -96,4 +96,9 @@ for index, row in df.iterrows():
     if not pdf_encontrado:
         print(f"  ⚠️ PDF '{pdf_filename_esperado}' não encontrado nos anexos")
 
+origem = r".\src\downloads_ops\update_cards.xlsx"
+destino = r".\src\temp\update_cards\update_cards.xlsx"
+
+shutil.move(origem, destino)
+
 print(f"\n✅ Processamento concluído!")
