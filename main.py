@@ -18,7 +18,7 @@ class SidebarApp:
         self.center_window(1200, 600)
         
         # Estado da sidebar (True = aberta, False = fechada)
-        self.sidebar_expanded = True
+        self.sidebar_expanded = False
         
         # Larguras da sidebar
         self.sidebar_width_expanded = 200
@@ -33,6 +33,13 @@ class SidebarApp:
         
         # Criar sidebar
         self.create_sidebar()
+        
+        # Variável para rastrear o botão de menu ativo
+        self.active_menu_button = None
+        
+        # Se a sidebar começa colapsada, esconder textos dos botões
+        if not self.sidebar_expanded:
+            self.update_button_texts("")
         
         # Criar área de conteúdo
         self.create_content_area()
@@ -80,9 +87,10 @@ class SidebarApp:
         
     def create_sidebar(self):
         """Cria a sidebar com menu"""
+        initial_width = self.sidebar_width_expanded if self.sidebar_expanded else self.sidebar_width_collapsed
         self.sidebar = ctk.CTkFrame(
             self.main_container,
-            width=self.sidebar_width_expanded,
+            width=initial_width,
             corner_radius=0,
         )
         self.sidebar.pack(side="left", fill="y")
@@ -127,6 +135,7 @@ class SidebarApp:
         # Criar botão Exit
         self.exit_btn = self.create_menu_button(self.exit_container, "exit", "Sair", self.exit_action)
     
+
     def create_menu_button(self, container, img_key, text, command):
         """Cria um botão do menu"""
         img = self.images.get(img_key)
@@ -155,15 +164,17 @@ class SidebarApp:
     def toggle_sidebar(self):
         """Alterna entre sidebar aberta e fechada"""
         if self.sidebar_expanded:
-            # Fechar sidebar - mostrar apenas ícones
+            # Fechar sidebar
+            self.sidebar_expanded = False
             self.sidebar.configure(width=self.sidebar_width_collapsed)
             self.update_button_texts("")
+            self.toggle_btn.configure(text="☰")
         else:
-            # Abrir sidebar - expande primeiro, depois mostra texto
+            # Abrir sidebar
+            self.sidebar_expanded = True
             self.sidebar.configure(width=self.sidebar_width_expanded)
             self.root.after(50, lambda: self.update_button_texts("show"))
-        
-        self.sidebar_expanded = not self.sidebar_expanded
+            self.toggle_btn.configure(text="✕")
     
     def update_button_texts(self, mode):
         """Atualiza os textos dos botões"""
@@ -178,6 +189,18 @@ class SidebarApp:
                 btn.configure(text=f"  {text}")
             self.exit_btn.configure(text="  Sair")
     
+    def set_active_menu_button(self, button_name):
+        """Marca um botão do menu como ativo"""
+        for btn, img_key, text in self.menu_buttons:
+            if img_key == button_name:
+                # Botão ativo - cor de destaque
+                btn.configure(fg_color="#3a3a5e")
+                self.active_menu_button = img_key
+            else:
+                # Botões inativos - transparente
+                btn.configure(fg_color="transparent")
+    
+
     def create_content_area(self):
         """Cria a área de conteúdo principal"""
         self.content_area = ctk.CTkFrame(self.main_container, corner_radius=0, fg_color="#3d3d3d")
@@ -224,6 +247,7 @@ class SidebarApp:
     
     # Ações dos botões do menu
     def home_action(self):
+        self.set_active_menu_button("home")
         self.show_content(
             "Home",
             "Bem-vindo à página inicial! Aqui você pode ver um resumo geral do sistema.",
@@ -232,6 +256,7 @@ class SidebarApp:
         )
     
     def dashboard_action(self):
+        self.set_active_menu_button("dashboard")
         self.show_content(
             "Dashboard",
             "Dashboard com métricas e estatísticas importantes do sistema.",
@@ -241,6 +266,7 @@ class SidebarApp:
     
     def pcp_action(self):
         """Mostra conteúdo PCP com 6 botões em grade 2x3"""
+        self.set_active_menu_button("pcp")
         self.clear_content()
         
         # Card de conteúdo
@@ -743,14 +769,18 @@ class SidebarApp:
         self.root.after(1500, confirm_popup.destroy)
     
     def view_excel_data(self, file_path):
-        """Visualiza os dados do Excel em uma tabela na interface"""
+        """Visualiza os dados do Excel em uma nova janela"""
         try:
+            print(f"Iniciando visualização de dados: {file_path}")
+            
             # Fechar popup de sucesso
             self.close_loading_popup()
             
             # Ler arquivo Excel
             import pandas as pd
+            print(f"Lendo arquivo Excel...")
             df = pd.read_excel(file_path)
+            print(f"Arquivo lido com sucesso. {len(df)} linhas encontradas")
             
             # Criar cópia para visualização
             df_visual = df.copy()
@@ -774,35 +804,63 @@ class SidebarApp:
                 display_columns.remove("Issue")
                 display_columns.insert(0, "Issue")
             
-            # Limpar área de conteúdo
-            self.clear_content()
+            print(f"Colunas a exibir: {display_columns}")
+            print("Criando nova janela...")
+            
+            # Criar nova janela
+            excel_window = ctk.CTkToplevel(self.root)
+            excel_window.title("Visualização de Dados - " + os.path.basename(file_path))
+            excel_window.geometry("900x500")
+            print("Janela criada")
+            
+            # Centralizar a nova janela
+            excel_window.update_idletasks()
+            width = 900
+            height = 500
+            screen_width = excel_window.winfo_screenwidth()
+            screen_height = excel_window.winfo_screenheight()
+            x = (screen_width - width) // 2
+            y = (screen_height - height) // 2
+            excel_window.geometry(f"{width}x{height}+{x}+{y}")
+            print(f"Janela posicionada em {x},{y}")
+            
+            # Trazer janela para frente
+            excel_window.lift()
+            excel_window.focus_force()
+            excel_window.attributes('-topmost', True)
+            excel_window.after(100, lambda: excel_window.attributes('-topmost', False))
             
             # Card de conteúdo
-            card = ctk.CTkFrame(self.dynamic_content, corner_radius=10)
-            card.pack(fill="both", expand=True, padx=20, pady=10)
+            card = ctk.CTkFrame(excel_window, corner_radius=10)
+            card.pack(fill="both", expand=True, padx=10, pady=10)
+            print("Card criado")
             
             # Título
             title_label = ctk.CTkLabel(
                 card,
                 text="  Visualização de Dados",
-                font=ctk.CTkFont(size=24, weight="bold")
+                font=ctk.CTkFont(size=18, weight="bold")
             )
-            title_label.pack(pady=20, anchor="w", padx=30)
+            title_label.pack(pady=10, anchor="w", padx=15)
+            print("Título adicionado")
             
             # Info do arquivo
             info_label = ctk.CTkLabel(
                 card,
                 text=f"Arquivo: {os.path.basename(file_path)} | Total de registros: {len(df_visual)}",
-                font=ctk.CTkFont(size=12),
+                font=ctk.CTkFont(size=10),
                 text_color="gray70"
             )
-            info_label.pack(pady=5, anchor="w", padx=30)
+            info_label.pack(pady=3, anchor="w", padx=15)
+            print("Info adicionada")
             
             # Frame scrollable para a tabela
-            table_frame = ctk.CTkScrollableFrame(card, height=350)
-            table_frame.pack(fill="both", expand=True, padx=30, pady=20)
+            table_frame = ctk.CTkScrollableFrame(card, height=280)
+            table_frame.pack(fill="both", expand=True, padx=15, pady=10)
+            print("Frame scrollable criado")
             
             # Criar cabeçalho da tabela
+            print(f"Criando cabeçalho com {len(display_columns)} colunas")
             for col_idx, column in enumerate(display_columns):
                 header_frame = ctk.CTkFrame(
                     table_frame,
@@ -820,9 +878,11 @@ class SidebarApp:
                     width=80 if column in ["Issue", "Status"] else 150
                 )
                 header.pack(padx=8, pady=6, fill="both", expand=True)
+            print("Cabeçalho criado")
             
             # Preencher dados da tabela (limitado a 100 linhas para performance)
             max_rows = min(len(df_visual), 100)
+            print(f"Preenchendo {max_rows} linhas de dados...")
             for row_idx in range(max_rows):
                 for col_idx, column in enumerate(display_columns):
                     value = df_visual[column].iloc[row_idx]
@@ -864,46 +924,67 @@ class SidebarApp:
                         )
                         cell.pack(padx=8, pady=4, fill="both", expand=True)
             
+            print(f"Tabela preenchida com {max_rows} linhas e {len(entries_data)} campos editáveis")
+            
             # Aviso se houver mais linhas
             if len(df) > 100:
                 warning_label = ctk.CTkLabel(
                     card,
                     text=f"⚠️ Exibindo apenas as primeiras 100 linhas de {len(df)}",
-                    font=ctk.CTkFont(size=11),
+                    font=ctk.CTkFont(size=9),
                     text_color="orange"
                 )
-                warning_label.pack(pady=5, anchor="w", padx=30)
+                warning_label.pack(pady=3, anchor="w", padx=15)
             
             # Container para botões
             buttons_container = ctk.CTkFrame(card, fg_color="transparent")
-            buttons_container.pack(pady=15)
+            buttons_container.pack(pady=8)
+            print("Container de botões criado")
             
             # Botão Salvar e Atualizar Jira
             save_btn = ctk.CTkButton(
                 buttons_container,
                 text="💾 Salvar e Atualizar Jira",
                 command=lambda: self.save_and_update_jira(file_path, entries_data),
-                width=200,
-                height=35,
-                font=ctk.CTkFont(size=13, weight="bold"),
+                width=170,
+                height=30,
+                font=ctk.CTkFont(size=11, weight="bold"),
                 fg_color="#2a9d2a",
                 hover_color="#238a23"
             )
-            save_btn.pack(side="left", padx=5)
+            save_btn.pack(side="left", padx=3)
             
             # Botão para abrir no Excel
             open_excel_btn = ctk.CTkButton(
                 buttons_container,
                 text="📄 Abrir Excel",
                 command=lambda: self.open_file(file_path),
-                width=150,
-                height=35,
-                font=ctk.CTkFont(size=13, weight="bold")
+                width=120,
+                height=30,
+                font=ctk.CTkFont(size=11, weight="bold")
             )
-            open_excel_btn.pack(side="left", padx=5)
+            open_excel_btn.pack(side="left", padx=3)
+            
+            # Botão Fechar
+            close_btn = ctk.CTkButton(
+                buttons_container,
+                text="✕ Fechar",
+                command=excel_window.destroy,
+                width=100,
+                height=30,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                fg_color="gray40",
+                hover_color="gray50"
+            )
+            close_btn.pack(side="left", padx=3)
+            
+            print("Janela de visualização criada com sucesso!")
             
         except Exception as e:
+            import traceback
             print(f"Erro ao visualizar dados: {e}")
+            print(f"Traceback completo:")
+            traceback.print_exc()
             # Fechar popup se houver
             self.close_loading_popup()
     
@@ -927,6 +1008,8 @@ class SidebarApp:
         
         def execute():
             try:
+                print(f"Executando script: {script_path}")
+                print(f"Arquivo esperado: {output_file}")
                 result = subprocess.run(["python", script_path], 
                                       capture_output=True, 
                                       text=True,
@@ -939,10 +1022,46 @@ class SidebarApp:
             except Exception as e:
                 print(f"Erro ao executar o script: {e}")
             finally:
-                # Parar simulação, completar progresso e mostrar mensagem de sucesso
+                # Parar simulação, completar progresso
                 self.script_running = False
                 self.root.after(0, lambda: self.update_progress(1.0))
-                self.root.after(500, lambda: self.show_success_message(script_name, output_file))
+                
+                # Se for "Adicionar Datas", abrir diretamente a visualização
+                if script_name == "Adicionar Datas" and output_file:
+                    # Aguardar um pouco para garantir que o arquivo foi criado
+                    import time
+                    time.sleep(0.5)
+                    
+                    # Verificar se o arquivo foi gerado
+                    print(f"Verificando se arquivo existe: {output_file}")
+                    print(f"Arquivo existe: {os.path.exists(output_file)}")
+                    print(f"Caminho absoluto: {os.path.abspath(output_file)}")
+                    
+                    # Tentar caminhos alternativos
+                    possible_paths = [
+                        output_file,
+                        os.path.abspath(output_file),
+                        os.path.join(os.getcwd(), "src", "data_update", "update_cards.xlsx"),
+                        ".\\src\\data_update\\update_cards.xlsx"
+                    ]
+                    
+                    found_file = None
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            found_file = path
+                            print(f"Arquivo encontrado em: {path}")
+                            break
+                    
+                    if found_file:
+                        print("Abrindo visualização de dados...")
+                        self.root.after(500, lambda: self.close_loading_popup())
+                        self.root.after(600, lambda: self.view_excel_data(found_file))
+                    else:
+                        print(f"Arquivo não encontrado em nenhum dos caminhos tentados")
+                        self.root.after(500, lambda: self.show_success_message(script_name, output_file))
+                else:
+                    # Para outros scripts, mostrar mensagem de sucesso
+                    self.root.after(500, lambda: self.show_success_message(script_name, output_file))
         
         # Mostrar popup e iniciar execução em thread separada
         self.show_loading_popup(f"Executando {script_name}...")
@@ -974,6 +1093,7 @@ class SidebarApp:
         # Adicione aqui a lógica específica para outras rotinas
     
     def settings_action(self):
+        self.set_active_menu_button("settings")
         self.show_content(
             "Configurações",
             "Configure as preferências do sistema de acordo com suas necessidades.",
