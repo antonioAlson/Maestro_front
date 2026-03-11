@@ -9,13 +9,13 @@ class SidebarApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Home")
-        self.root.geometry("1200x500")
+        self.root.geometry("1000x500")
         # Configurar tema
         ctk.set_appearance_mode("dark")  # "light" ou "dark"
         ctk.set_default_color_theme("blue")  # "blue", "green", "dark-blue"
         
         # Centralizar janela na tela
-        self.center_window(1200, 600)
+        self.center_window(1000, 500)
         
         # Estado da sidebar (True = aberta, False = fechada)
         self.sidebar_expanded = False
