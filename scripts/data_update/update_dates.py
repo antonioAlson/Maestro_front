@@ -103,6 +103,12 @@ while True:
         if situacao not in situacoes_validas:
             continue
 
+        # Abreviar situação
+        if situacao == "⚪️RECEBIDO ENCAMINHADO":
+            situacao = "⚪️REC. Encaminhado"
+        elif situacao == "🟢RECEBIDO LIBERADO":
+            situacao = "🟢REC. Liberado"
+
         # VEÍCULO
         veiculo_raw = fields.get("customfield_11298")
         if isinstance(veiculo_raw, dict):
@@ -182,96 +188,9 @@ for idx, link in enumerate(links_sem_previsao, start=2):
     cell.hyperlink = link
     cell.style = "Hyperlink"
 
+# Ajustar largura da coluna SITUAÇÃO (coluna F) para 80px (aproximadamente 11 unidades)
+ws_update.column_dimensions['F'].width = 11
+
 wb_update.save(update_filename)
 
 print(f"Arquivo {update_filename} criado com sucesso!")
-
-# ============================================================================
-# PARTE 2: ATUALIZAR JIRA (COMENTADO - APENAS GERAR ARQUIVO POR ENQUANTO)
-# ============================================================================
-
-# CAMPO_PREVISAO = "customfield_10245"
-# 
-# headers_update = {
-#     "Accept": "application/json",
-#     "Content-Type": "application/json"
-# }
-# 
-# # LER EXCEL
-# df_update = pd.read_excel(update_filename)
-# 
-# # remover espaços nos nomes das colunas
-# df_update.columns = df_update.columns.str.strip()
-# 
-# print("Linhas encontradas:", len(df_update))
-# 
-# for index, row in df_update.iterrows():
-# 
-#     issue_id = row["ID"]
-#     data_entrega = row["DT. PREVISÃO ENTREGA"]
-# 
-#     if pd.isna(issue_id) or pd.isna(data_entrega):
-#         continue
-# 
-#     # Converter para formato YYYY-MM-DD (formato esperado pela API Jira)
-#     try:
-#         data_formatada = None
-# 
-#         # Se for datetime do pandas
-#         if isinstance(data_entrega, pd.Timestamp):
-#             data_formatada = data_entrega.strftime("%Y-%m-%d")
-#         # Se for string, tentar diferentes formatos
-#         elif isinstance(data_entrega, str):
-#             data_str = data_entrega.strip()
-# 
-#             # Tentar formato dd/mm/YYYY
-#             if "/" in data_str:
-#                 try:
-#                     data_obj = datetime.strptime(data_str, "%d/%m/%Y")
-#                     data_formatada = data_obj.strftime("%Y-%m-%d")
-#                 except:
-#                     pass
-# 
-#             # Tentar formato YYYY-MM-DD
-#             if not data_formatada and "-" in data_str:
-#                 try:
-#                     data_obj = datetime.strptime(data_str, "%Y-%m-%d")
-#                     data_formatada = data_obj.strftime("%Y-%m-%d")
-#                 except:
-#                     pass
-# 
-#             # Tentar formato dd-mm-YYYY
-#             if not data_formatada and "-" in data_str:
-#                 try:
-#                     data_obj = datetime.strptime(data_str, "%d-%m-%Y")
-#                     data_formatada = data_obj.strftime("%Y-%m-%d")
-#                 except:
-#                     pass
-# 
-#         if not data_formatada:
-#             print(f"Formato de data não reconhecido para {issue_id}: {data_entrega} (tipo: {type(data_entrega)})")
-#             continue
-# 
-#     except Exception as e:
-#         print(f"Erro ao converter data para {issue_id}: {e}, valor: {data_entrega}")
-#         continue
-# 
-#     url_update = f"{JIRA_URL}/rest/api/3/issue/{issue_id}"
-# 
-#     payload = {
-#         "fields": {
-#             CAMPO_PREVISAO: data_formatada
-#         }
-#     }
-# 
-#     response = requests.put(
-#         url_update,
-#         headers=headers_update,
-#         auth=auth,
-#         json=payload
-#     )
-# 
-#     if response.status_code == 204:
-#         print(f"{issue_id} atualizado para {data_formatada}")
-#     else:
-#         print(f"Erro ao atualizar {issue_id}:", response.text)

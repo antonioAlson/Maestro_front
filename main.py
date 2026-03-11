@@ -418,6 +418,330 @@ class SidebarApp:
         except Exception as e:
             print(f"Erro ao abrir arquivo: {e}")
     
+    def save_and_update_jira(self, file_path, entries_data):
+        """Salva alterações no Excel e atualiza no Jira"""
+        # Primeiro salvar no Excel (sem mostrar confirmação)
+        try:
+            import pandas as pd
+            from openpyxl import load_workbook
+            from datetime import datetime
+            
+            # Ler arquivo Excel
+            df = pd.read_excel(file_path)
+            
+            # Converter a coluna de data para datetime se necessário
+            if "DT. PREVISÃO ENTREGA" in df.columns:
+                df["DT. PREVISÃO ENTREGA"] = pd.to_datetime(df["DT. PREVISÃO ENTREGA"], errors='coerce')
+            
+            # Atualizar todos os valores
+            for row_idx, column, entry in entries_data:
+                new_value = entry.get().strip()
+                
+                if column == "DT. PREVISÃO ENTREGA":
+                    if new_value:
+                        try:
+                            if "/" in new_value:
+                                date_obj = datetime.strptime(new_value, "%d/%m/%Y")
+                            elif "-" in new_value and len(new_value) == 10:
+                                try:
+                                    date_obj = datetime.strptime(new_value, "%Y-%m-%d")
+                                except:
+                                    date_obj = datetime.strptime(new_value, "%d-%m-%Y")
+                            else:
+                                date_obj = pd.to_datetime(new_value)
+                            
+                            df.at[row_idx, column] = pd.Timestamp(date_obj)
+                        except (ValueError, Exception) as e:
+                            print(f"Aviso: Formato de data inválido '{new_value}' na linha {row_idx}")
+                            df.at[row_idx, column] = pd.NaT
+                    else:
+                        df.at[row_idx, column] = pd.NaT
+                else:
+                    df.at[row_idx, column] = new_value if new_value else ""
+            
+            # Salvar arquivo
+            df.to_excel(file_path, index=False)
+            
+            # Reaplicar hyperlinks se a coluna "Chave" existir
+            if "Chave" in df.columns:
+                wb = load_workbook(file_path)
+                ws = wb.active
+                
+                for idx, link in enumerate(df["Chave"], start=2):
+                    cell = ws[f'C{idx}']
+                    cell.hyperlink = link
+                    cell.style = "Hyperlink"
+                
+                if 'F' in ws.column_dimensions:
+                    ws.column_dimensions['F'].width = 11
+                
+                wb.save(file_path)
+            
+            print(f"✓ Dados salvos no Excel!")
+            
+            # Aguardar e atualizar Jira
+            self.root.after(500, lambda: self.update_jira_dates(file_path))
+            
+        except Exception as e:
+            print(f"Erro ao salvar alterações: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def save_all_excel_changes(self, file_path, entries_data):
+        """Salva todas as alterações dos campos de entrada no Excel"""
+        try:
+            import pandas as pd
+            from openpyxl import load_workbook
+            from datetime import datetime
+            
+            # Ler arquivo Excel
+            df = pd.read_excel(file_path)
+            
+            # Converter a coluna de data para datetime se necessário
+            if "DT. PREVISÃO ENTREGA" in df.columns:
+                # Converter para datetime, erros viram NaT
+                df["DT. PREVISÃO ENTREGA"] = pd.to_datetime(df["DT. PREVISÃO ENTREGA"], errors='coerce')
+            
+            # Atualizar todos os valores
+            for row_idx, column, entry in entries_data:
+                new_value = entry.get().strip()
+                
+                # Se for a coluna de data
+                if column == "DT. PREVISÃO ENTREGA":
+                    if new_value:
+                        try:
+                            # Tentar converter de dd/mm/yyyy para datetime
+                            if "/" in new_value:
+                                date_obj = datetime.strptime(new_value, "%d/%m/%Y")
+                            elif "-" in new_value and len(new_value) == 10:
+                                # Se estiver no formato YYYY-MM-DD ou DD-MM-YYYY
+                                try:
+                                    date_obj = datetime.strptime(new_value, "%Y-%m-%d")
+                                except:
+                                    date_obj = datetime.strptime(new_value, "%d-%m-%Y")
+                            else:
+                                # Tentar outros formatos
+                                date_obj = pd.to_datetime(new_value)
+                            
+                            # Atualizar com Timestamp do pandas
+                            df.at[row_idx, column] = pd.Timestamp(date_obj)
+                        except (ValueError, Exception) as e:
+                            # Se não conseguir converter, deixar NaT
+                            print(f"Aviso: Formato de data inválido '{new_value}' na linha {row_idx}")
+                            df.at[row_idx, column] = pd.NaT
+                    else:
+                        # Se estiver vazio, usar NaT
+                        df.at[row_idx, column] = pd.NaT
+                else:
+                    # Para outras colunas
+                    df.at[row_idx, column] = new_value if new_value else ""
+            
+            # Salvar arquivo
+            df.to_excel(file_path, index=False)
+            
+            # Reaplicar hyperlinks se a coluna "Chave" existir
+            if "Chave" in df.columns:
+                wb = load_workbook(file_path)
+                ws = wb.active
+                
+                for idx, link in enumerate(df["Chave"], start=2):
+                    cell = ws[f'C{idx}']
+                    cell.hyperlink = link
+                    cell.style = "Hyperlink"
+                
+                # Ajustar largura da coluna SITUAÇÃO (coluna F) para 80px
+                if 'F' in ws.column_dimensions:
+                    ws.column_dimensions['F'].width = 11
+                
+                wb.save(file_path)
+            
+            print(f"✓ Todas as alterações foram salvas com sucesso!")
+            
+            # Mostrar mensagem de confirmação visual
+            self.show_save_confirmation()
+            
+        except Exception as e:
+            print(f"Erro ao salvar alterações: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_jira_dates(self, file_path):
+        """Atualiza as datas no Jira baseado no arquivo Excel"""
+        try:
+            import pandas as pd
+            import requests
+            from requests.auth import HTTPBasicAuth
+            from datetime import datetime
+            from dotenv import load_dotenv
+            import os
+            
+            # Carregar variáveis de ambiente
+            load_dotenv()
+            
+            JIRA_URL = os.getenv("JIRA_URL")
+            EMAIL = os.getenv("EMAIL")
+            API_TOKEN = os.getenv("API_TOKEN")
+            CAMPO_PREVISAO = "customfield_10245"
+            
+            # Ler arquivo Excel
+            df = pd.read_excel(file_path)
+            
+            # Filtrar apenas linhas com ID e data preenchidos
+            df_update = df[df["ID"].notna() & df["DT. PREVISÃO ENTREGA"].notna()].copy()
+            
+            if len(df_update) == 0:
+                print("Nenhuma data para atualizar no Jira")
+                return
+            
+            print(f"Atualizando {len(df_update)} issues no Jira...")
+            
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            
+            auth = HTTPBasicAuth(EMAIL, API_TOKEN)
+            
+            success_count = 0
+            error_count = 0
+            
+            for index, row in df_update.iterrows():
+                issue_id = row["ID"]
+                data_entrega = row["DT. PREVISÃO ENTREGA"]
+                
+                # Converter para formato YYYY-MM-DD
+                try:
+                    if isinstance(data_entrega, pd.Timestamp):
+                        data_formatada = data_entrega.strftime("%Y-%m-%d")
+                    elif isinstance(data_entrega, str):
+                        # Tentar converter string para datetime
+                        if "/" in data_entrega:
+                            date_obj = datetime.strptime(data_entrega, "%d/%m/%Y")
+                        else:
+                            date_obj = datetime.strptime(data_entrega, "%Y-%m-%d")
+                        data_formatada = date_obj.strftime("%Y-%m-%d")
+                    else:
+                        print(f"Formato não reconhecido para {issue_id}: {data_entrega}")
+                        error_count += 1
+                        continue
+                    
+                    # Fazer requisição ao Jira
+                    url = f"{JIRA_URL}/rest/api/3/issue/{issue_id}"
+                    payload = {
+                        "fields": {
+                            CAMPO_PREVISAO: data_formatada
+                        }
+                    }
+                    
+                    response = requests.put(url, headers=headers, auth=auth, json=payload)
+                    
+                    if response.status_code == 204:
+                        print(f"✓ {issue_id} atualizado para {data_formatada}")
+                        success_count += 1
+                    else:
+                        print(f"✗ Erro ao atualizar {issue_id}: {response.status_code} - {response.text}")
+                        error_count += 1
+                        
+                except Exception as e:
+                    print(f"✗ Erro ao processar {issue_id}: {e}")
+                    error_count += 1
+            
+            # Mostrar resultado
+            print(f"\nAtualização concluída: {success_count} sucesso, {error_count} erros")
+            self.show_jira_update_result(success_count, error_count)
+            
+        except Exception as e:
+            print(f"Erro ao atualizar Jira: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def show_jira_update_result(self, success_count, error_count):
+        """Mostra resultado da atualização do Jira"""
+        result_popup = ctk.CTkToplevel(self.root)
+        result_popup.title("Resultado da Atualização")
+        result_popup.geometry("350x180")
+        result_popup.resizable(False, False)
+        
+        # Centralizar
+        result_popup.transient(self.root)
+        result_popup.update_idletasks()
+        
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        
+        x = root_x + (root_width - 350) // 2
+        y = root_y + (root_height - 180) // 2
+        
+        result_popup.geometry(f"350x180+{x}+{y}")
+        
+        # Mensagem
+        title = "✓ Atualização Concluída!" if error_count == 0 else "⚠️ Atualização Parcial"
+        color = "#90EE90" if error_count == 0 else "orange"
+        
+        label = ctk.CTkLabel(
+            result_popup,
+            text=title,
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=color
+        )
+        label.pack(pady=20)
+        
+        # Detalhes
+        detail_text = f"✓ Sucesso: {success_count}\n✗ Erros: {error_count}"
+        detail_label = ctk.CTkLabel(
+            result_popup,
+            text=detail_text,
+            font=ctk.CTkFont(size=14)
+        )
+        detail_label.pack(pady=10)
+        
+        # Botão fechar
+        close_btn = ctk.CTkButton(
+            result_popup,
+            text="Fechar",
+            command=result_popup.destroy,
+            width=120,
+            height=35,
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        close_btn.pack(pady=15)
+    
+    def show_save_confirmation(self):
+        """Mostra mensagem temporária de confirmação de salvamento"""
+        # Criar popup temporário
+        confirm_popup = ctk.CTkToplevel(self.root)
+        confirm_popup.title("Sucesso")
+        confirm_popup.geometry("300x120")
+        confirm_popup.resizable(False, False)
+        
+        # Centralizar
+        confirm_popup.transient(self.root)
+        confirm_popup.update_idletasks()
+        
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        
+        x = root_x + (root_width - 300) // 2
+        y = root_y + (root_height - 120) // 2
+        
+        confirm_popup.geometry(f"300x120+{x}+{y}")
+        
+        # Mensagem
+        label = ctk.CTkLabel(
+            confirm_popup,
+            text="✓ Dados salvos com sucesso!",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#90EE90"
+        )
+        label.pack(pady=30)
+        
+        # Fechar automaticamente após 1.5 segundos
+        self.root.after(1500, confirm_popup.destroy)
+    
     def view_excel_data(self, file_path):
         """Visualiza os dados do Excel em uma tabela na interface"""
         try:
@@ -431,9 +755,13 @@ class SidebarApp:
             # Criar cópia para visualização
             df_visual = df.copy()
             
+            # Lista para armazenar referências aos campos editáveis
+            entries_data = []
+            
             # Combinar Tipo de issue e Resumo em uma única coluna
             if "Tipo de issue" in df_visual.columns and "Resumo" in df_visual.columns:
-                df_visual["Issue"] = df_visual["Tipo de issue"] + " - " + df_visual["Resumo"]
+                # Converter para string para evitar erros de concatenação
+                df_visual["Issue"] = df_visual["Tipo de issue"].astype(str) + " - " + df_visual["Resumo"].astype(str)
                 # Remover as colunas originais na visualização
                 df_visual = df_visual.drop(columns=["Tipo de issue", "Resumo"])
             
@@ -489,7 +817,7 @@ class SidebarApp:
                     text=str(column),
                     font=ctk.CTkFont(size=12, weight="bold"),
                     anchor="w",
-                    width=100 if column in ["Issue", "Status"] else 150
+                    width=80 if column in ["Issue", "Status"] else 150
                 )
                 header.pack(padx=8, pady=6, fill="both", expand=True)
             
@@ -500,7 +828,7 @@ class SidebarApp:
                     value = df_visual[column].iloc[row_idx]
                     # Converter para string e limitar tamanho
                     cell_text = str(value) if pd.notna(value) else ""
-                    if len(cell_text) > 50:
+                    if len(cell_text) > 50 and column != "DT. PREVISÃO ENTREGA":
                         cell_text = cell_text[:47] + "..."
                     
                     # Frame para criar borda da célula
@@ -512,14 +840,29 @@ class SidebarApp:
                     )
                     cell_frame.grid(row=row_idx + 1, column=col_idx, padx=1, pady=1, sticky="ew")
                     
-                    cell = ctk.CTkLabel(
-                        cell_frame,
-                        text=cell_text,
-                        font=ctk.CTkFont(size=11),
-                        anchor="w",
-                        width=100 if column in ["Issue", "Status"] else 150
-                    )
-                    cell.pack(padx=8, pady=4, fill="both", expand=True)
+                    # Se for a coluna de data, criar um campo de entrada editável
+                    if column == "DT. PREVISÃO ENTREGA":
+                        entry = ctk.CTkEntry(
+                            cell_frame,
+                            font=ctk.CTkFont(size=11),
+                            width=150,
+                            height=28
+                        )
+                        entry.insert(0, cell_text)
+                        entry.pack(padx=4, pady=2, fill="both", expand=True)
+                        
+                        # Armazenar referência para salvar depois
+                        entries_data.append((row_idx, column, entry))
+                    else:
+                        # Para outras colunas, usar label como antes
+                        cell = ctk.CTkLabel(
+                            cell_frame, 
+                            text=cell_text,
+                            font=ctk.CTkFont(size=11),
+                            anchor="w",
+                            width=80 if column in ["Issue", "Status"] else 150
+                        )
+                        cell.pack(padx=8, pady=4, fill="both", expand=True)
             
             # Aviso se houver mais linhas
             if len(df) > 100:
@@ -531,16 +874,33 @@ class SidebarApp:
                 )
                 warning_label.pack(pady=5, anchor="w", padx=30)
             
+            # Container para botões
+            buttons_container = ctk.CTkFrame(card, fg_color="transparent")
+            buttons_container.pack(pady=15)
+            
+            # Botão Salvar e Atualizar Jira
+            save_btn = ctk.CTkButton(
+                buttons_container,
+                text="💾 Salvar e Atualizar Jira",
+                command=lambda: self.save_and_update_jira(file_path, entries_data),
+                width=200,
+                height=35,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#2a9d2a",
+                hover_color="#238a23"
+            )
+            save_btn.pack(side="left", padx=5)
+            
             # Botão para abrir no Excel
             open_excel_btn = ctk.CTkButton(
-                card,
-                text="Abrir no Excel",
+                buttons_container,
+                text="📄 Abrir Excel",
                 command=lambda: self.open_file(file_path),
                 width=150,
                 height=35,
                 font=ctk.CTkFont(size=13, weight="bold")
             )
-            open_excel_btn.pack(pady=15)
+            open_excel_btn.pack(side="left", padx=5)
             
         except Exception as e:
             print(f"Erro ao visualizar dados: {e}")
