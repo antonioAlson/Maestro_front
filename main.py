@@ -3,6 +3,11 @@ from PIL import Image
 import os
 import subprocess
 import threading
+import sys
+
+# Adicionar path do script update_dates
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts', 'data_update'))
+import update_dates
 
 
 class SidebarApp:
@@ -1055,7 +1060,7 @@ class SidebarApp:
                     if found_file:
                         print("Abrindo visualização de dados...")
                         self.root.after(500, lambda: self.close_loading_popup())
-                        self.root.after(600, lambda: self.view_excel_data(found_file))
+                        self.root.after(600, lambda: update_dates.abrir_janela_visualizacao(self))
                     else:
                         print(f"Arquivo não encontrado em nenhum dos caminhos tentados")
                         self.root.after(500, lambda: self.show_success_message(script_name, output_file))
