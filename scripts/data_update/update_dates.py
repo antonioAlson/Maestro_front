@@ -299,6 +299,8 @@ def salvar_e_atualizar_jira(df_source, entries_data, card, excel_window):
         # Atualizar todos os valores
         for row_idx, column, entry in entries_data:
             new_value = entry.get().strip()
+            if column == "DT. PREVISÃO ENTREGA" and ("_" in new_value or new_value == "__/__/____"):
+                new_value = ""
             
             if column == "DT. PREVISÃO ENTREGA":
                 if new_value:
@@ -607,6 +609,12 @@ def abrir_janela_visualizacao(main_app, df=None):
         # Lista para armazenar referências aos campos editáveis
         entries_data = []
         
+        # Variáveis para controle de ordenação e filtros
+        current_sort_column = None
+        current_sort_ascending = True
+        column_filters = {}  # {coluna: [valores_selecionados]}
+        filterable_columns = {"Issue", "Status"}
+        
         # Combinar Tipo de issue e Resumo em uma única coluna
         if "Tipo de issue" in df_visual.columns and "Resumo" in df_visual.columns:
             df_visual["Issue"] = df_visual["Tipo de issue"].astype(str) + " - " + df_visual["Resumo"].astype(str)
@@ -644,6 +652,354 @@ def abrir_janela_visualizacao(main_app, df=None):
         excel_window.focus_force()
         excel_window.attributes('-topmost', True)
         excel_window.after(100, lambda: excel_window.attributes('-topmost', False))
+
+        def build_visual_df(source_df):
+            """Retorna DataFrame com transformações de visualização aplicadas."""
+            result_df = source_df.copy()
+            if "Tipo de issue" in result_df.columns and "Resumo" in result_df.columns:
+                result_df["Issue"] = result_df["Tipo de issue"].astype(str) + " - " + result_df["Resumo"].astype(str)
+                result_df = result_df.drop(columns=["Tipo de issue", "Resumo"])
+            return result_df
+        
+        # Variáveis que serão modificadas pelas funções
+        table_frame_ref = [None]  # Usar lista para permitir modificação em closures
+        
+        def aplicar_filtros_e_ordenacao():
+            """Aplica filtros e ordenação ao DataFrame"""
+            nonlocal df_visual
+            try:
+                df_filtrado = build_visual_df(df)
+                
+                # Aplicar filtros
+                for coluna, valores in column_filters.items():
+                    if valores and coluna in df_filtrado.columns:
+                        if coluna == "Issue":
+                            selected = {str(v).strip().lower() for v in valores}
+                            mask = pd.Series(False, index=df_filtrado.index)
+
+                            if "manta" in selected and "Chave" in df_filtrado.columns:
+                                mask = mask | df_filtrado["Chave"].astype(str).str.upper().str.startswith("MANTA-")
+
+                            if "tensylon" in selected and "Chave" in df_filtrado.columns:
+                                mask = mask | df_filtrado["Chave"].astype(str).str.upper().str.startswith("TENSYLON-")
+
+                            # Fallback por texto, caso algum registro não siga o padrão da chave.
+                            if mask.sum() == 0:
+                                if "manta" in selected:
+                                    mask = mask | df_filtrado["Issue"].astype(str).str.lower().str.contains("manta", na=False)
+                                if "tensylon" in selected:
+                                    mask = mask | df_filtrado["Issue"].astype(str).str.lower().str.contains("tensylon", na=False)
+
+                            df_filtrado = df_filtrado[mask]
+                        else:
+                            df_filtrado = df_filtrado[df_filtrado[coluna].astype(str).isin(valores)]
+                
+                # Aplicar ordenação
+                if current_sort_column and current_sort_column in df_filtrado.columns:
+                    try:
+                        if current_sort_column == "DT. PREVISÃO ENTREGA":
+                            # Ordenar datas de forma robusta mesmo com vazios/textos
+                            ordem_data = pd.to_datetime(df_filtrado[current_sort_column], errors="coerce")
+                            df_filtrado = df_filtrado.assign(_ordem_tmp=ordem_data).sort_values(
+                                by="_ordem_tmp",
+                                ascending=current_sort_ascending,
+                                na_position="last",
+                                kind="stable"
+                            ).drop(columns=["_ordem_tmp"])
+                        else:
+                            # Ordenar texto de forma estável e case-insensitive para evitar erro de tipos mistos
+                            df_filtrado = df_filtrado.sort_values(
+                                by=current_sort_column,
+                                ascending=current_sort_ascending,
+                                na_position="last",
+                                kind="stable",
+                                key=lambda s: s.fillna("").astype(str).str.lower()
+                            )
+                    except Exception as sort_error:
+                        print(f"Aviso: falha ao ordenar coluna '{current_sort_column}': {sort_error}")
+                
+                df_visual = df_filtrado
+                return df_filtrado
+            except Exception as e:
+                print(f"Erro ao aplicar filtros/ordenação: {e}")
+                return build_visual_df(df)
+
+        def ordenar_por_clique(coluna):
+            """Ordena imediatamente ao clicar no cabeçalho (estilo Excel)."""
+            nonlocal current_sort_column, current_sort_ascending
+            if current_sort_column == coluna:
+                current_sort_ascending = not current_sort_ascending
+            else:
+                current_sort_column = coluna
+                current_sort_ascending = True
+            reconstruir_tabela()
+        
+        def reconstruir_tabela():
+            """Reconstrói a tabela com dados filtrados/ordenados"""
+            nonlocal entries_data
+            try:
+                # Aplicar filtros e ordenação
+                df_atualizado = aplicar_filtros_e_ordenacao()
+                
+                # Limpar tabela existente
+                if table_frame_ref[0]:
+                    table_frame_ref[0].destroy()
+                
+                # Limpar lista de entries
+                entries_data.clear()
+                
+                # Criar novo frame para tabela
+                table_frame = ctk.CTkScrollableFrame(card, height=280, fg_color="#2b2b2b")
+                table_frame.pack(fill="both", expand=True, padx=20, pady=(5, 10))
+                table_frame_ref[0] = table_frame
+                
+                # Criar cabeçalhos com ordenação e filtro
+                for col_idx, column in enumerate(display_columns):
+                    header_frame = ctk.CTkFrame(
+                        table_frame,
+                        fg_color="gray25",
+                        border_width=1,
+                        border_color="gray40"
+                    )
+                    header_frame.grid(row=0, column=col_idx, padx=1, pady=1, sticky="ew")
+                    
+                    # Texto do cabeçalho com indicador de ordenação
+                    header_text = str(column)
+                    if current_sort_column == column:
+                        header_text += " ▼" if not current_sort_ascending else " ▲"
+                    
+                    header_btn = ctk.CTkButton(
+                        header_frame,
+                        text=header_text,
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        fg_color="gray25",
+                        hover_color="gray35",
+                        text_color="white",
+                        width=60 if column in ["Issue", "Status", "SITUAÇÃO"] else 120,
+                        command=lambda col=column: ordenar_por_clique(col)
+                    )
+                    header_btn.pack(side="left", padx=(2, 1), pady=2, fill="both", expand=True)
+
+                    if column in filterable_columns:
+                        filtro_btn = ctk.CTkButton(
+                            header_frame,
+                            text="🔍" if column in column_filters and column_filters[column] else "≡",
+                            width=28,
+                            fg_color="gray30",
+                            hover_color="gray40",
+                            command=lambda col=column: mostrar_filtro(col)
+                        )
+                        filtro_btn.pack(side="right", padx=(1, 2), pady=2)
+                
+                # Preencher dados
+                max_rows = min(len(df_atualizado), 100)
+                for row_idx in range(max_rows):
+                    original_index = df_atualizado.index[row_idx]
+                    for col_idx, column in enumerate(display_columns):
+                        value = df_atualizado[column].iloc[row_idx]
+                        cell_text = str(value) if pd.notna(value) else ""
+                        if len(cell_text) > 50 and column != "DT. PREVISÃO ENTREGA":
+                            cell_text = cell_text[:47] + "..."
+                        
+                        cell_frame = ctk.CTkFrame(
+                            table_frame,
+                            fg_color="gray20",
+                            border_width=1,
+                            border_color="gray30"
+                        )
+                        cell_frame.grid(row=row_idx + 1, column=col_idx, padx=1, pady=1, sticky="ew")
+                        
+                        if column == "DT. PREVISÃO ENTREGA":
+                            entry = ctk.CTkEntry(
+                                cell_frame,
+                                font=ctk.CTkFont(size=11),
+                                width=150,
+                                height=28
+                            )
+                            entry.insert(0, cell_text)
+                            entry.pack(padx=4, pady=2, fill="both", expand=True)
+                            aplicar_mascara_data(entry)
+                            entries_data.append((original_index, column, entry))
+                        else:
+                            cell = ctk.CTkLabel(
+                                cell_frame,
+                                text=cell_text,
+                                font=ctk.CTkFont(size=11),
+                                anchor="w",
+                                width=80 if column in ["Issue", "Status", "SITUAÇÃO"] else 150
+                            )
+                            cell.pack(padx=8, pady=4, fill="both", expand=True)
+                
+                # Atualizar contador
+                info_label.configure(text=f"Registros carregados: {len(df_atualizado)}")
+            except Exception as rebuild_error:
+                print(f"Erro ao reconstruir tabela: {rebuild_error}")
+                if table_frame_ref[0]:
+                    table_frame_ref[0].destroy()
+                table_frame = ctk.CTkScrollableFrame(card, height=280, fg_color="#2b2b2b")
+                table_frame.pack(fill="both", expand=True, padx=20, pady=(5, 10))
+                table_frame_ref[0] = table_frame
+                ctk.CTkLabel(
+                    table_frame,
+                    text="Erro ao exibir dados. Tente fechar e abrir novamente.",
+                    text_color="#ff6b6b",
+                    font=ctk.CTkFont(size=13, weight="bold")
+                ).pack(pady=20)
+        
+        def mostrar_menu_coluna(coluna):
+            """Mostra menu com opções de ordenação e filtro"""
+            menu = ctk.CTkToplevel(excel_window)
+            menu.title(f"Opções - {coluna}")
+            menu.geometry("250x200")
+            menu.resizable(False, False)
+            
+            # Centralizar menu
+            menu.update_idletasks()
+            menu_width = 250
+            menu_height = 200
+            x = excel_window.winfo_x() + (excel_window.winfo_width() - menu_width) // 2
+            y = excel_window.winfo_y() + (excel_window.winfo_height() - menu_height) // 2
+            menu.geometry(f"{menu_width}x{menu_height}+{x}+{y}")
+            menu.transient(excel_window)
+            menu.grab_set()
+            
+            # Título
+            titulo = ctk.CTkLabel(
+                menu,
+                text=f"Coluna: {coluna}",
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            titulo.pack(pady=(15, 10))
+            
+            # Botões de ordenação
+            ctk.CTkButton(
+                menu,
+                text="⬆️ Ordenar A → Z",
+                command=lambda: [ordenar_coluna(coluna, True), menu.destroy()],
+                width=200
+            ).pack(pady=5)
+            
+            ctk.CTkButton(
+                menu,
+                text="⬇️ Ordenar Z → A",
+                command=lambda: [ordenar_coluna(coluna, False), menu.destroy()],
+                width=200
+            ).pack(pady=5)
+            
+            # Botão de filtro
+            ctk.CTkButton(
+                menu,
+                text="🔍 Filtrar valores",
+                command=lambda: [menu.destroy(), mostrar_filtro(coluna)],
+                width=200
+            ).pack(pady=5)
+            
+            # Botão limpar
+            ctk.CTkButton(
+                menu,
+                text="🗑️ Limpar filtros",
+                command=lambda: [limpar_filtros(coluna), menu.destroy()],
+                width=200,
+                fg_color="gray40",
+                hover_color="gray50"
+            ).pack(pady=5)
+        
+        def ordenar_coluna(coluna, ascendente):
+            """Ordena por uma coluna"""
+            nonlocal current_sort_column, current_sort_ascending
+            current_sort_column = coluna
+            current_sort_ascending = ascendente
+            reconstruir_tabela()
+        
+        def limpar_filtros(coluna):
+            """Remove filtros de uma coluna"""
+            if coluna in column_filters:
+                del column_filters[coluna]
+            reconstruir_tabela()
+        
+        def mostrar_filtro(coluna):
+            """Mostra janela de filtro com checkboxes"""
+            if coluna not in filterable_columns:
+                return
+
+            # Obter valores únicos da coluna
+            df_base_filtro = build_visual_df(df)
+            if coluna not in df_base_filtro.columns:
+                return
+            if coluna == "Issue":
+                valores_unicos = ["Manta", "Tensylon"]
+            else:
+                valores_unicos = sorted(df_base_filtro[coluna].astype(str).unique())
+            
+            filtro_window = ctk.CTkToplevel(excel_window)
+            filtro_window.title(f"Filtrar - {coluna}")
+            filtro_window.geometry("300x400")
+            
+            # Centralizar
+            filtro_window.update_idletasks()
+            x = excel_window.winfo_x() + (excel_window.winfo_width() - 300) // 2
+            y = excel_window.winfo_y() + (excel_window.winfo_height() - 400) // 2
+            filtro_window.geometry(f"300x400+{x}+{y}")
+            filtro_window.transient(excel_window)
+            filtro_window.grab_set()
+            
+            # Título
+            ctk.CTkLabel(
+                filtro_window,
+                text=f"Selecione os valores para filtrar:",
+                font=ctk.CTkFont(size=12, weight="bold")
+            ).pack(pady=10)
+            
+            # Frame scrollable para checkboxes
+            scroll_frame = ctk.CTkScrollableFrame(filtro_window, height=250)
+            scroll_frame.pack(fill="both", expand=True, padx=10, pady=5)
+            
+            # Dicionário para armazenar variáveis dos checkboxes
+            check_vars = {}
+            valores_atuais = set(column_filters.get(coluna, valores_unicos))
+            
+            for valor in valores_unicos:
+                var = ctk.BooleanVar(value=(valor in valores_atuais))
+                check_vars[valor] = var
+                ctk.CTkCheckBox(
+                    scroll_frame,
+                    text=valor[:50],  # Limitar tamanho
+                    variable=var
+                ).pack(anchor="w", pady=2, padx=5)
+            
+            # Botão aplicar
+            def aplicar():
+                valores_selecionados = [v for v, var in check_vars.items() if var.get()]
+                if valores_selecionados and set(valores_selecionados) != set(valores_unicos):
+                    column_filters[coluna] = valores_selecionados
+                elif coluna in column_filters:
+                    del column_filters[coluna]
+                reconstruir_tabela()
+                filtro_window.destroy()
+
+            def limpar_este_filtro():
+                if coluna in column_filters:
+                    del column_filters[coluna]
+                reconstruir_tabela()
+                filtro_window.destroy()
+            
+            ctk.CTkButton(
+                filtro_window,
+                text="✓ Aplicar Filtro",
+                command=aplicar,
+                width=200,
+                fg_color="#2a9d2a",
+                hover_color="#238a23"
+            ).pack(pady=10)
+
+            ctk.CTkButton(
+                filtro_window,
+                text="🗑 Limpar Filtro",
+                command=limpar_este_filtro,
+                width=200,
+                fg_color="gray40",
+                hover_color="gray50"
+            ).pack(pady=(0, 10))
         
         # Card de conteúdo
         card = ctk.CTkFrame(excel_window, corner_radius=10)
@@ -670,69 +1026,8 @@ def abrir_janela_visualizacao(main_app, df=None):
         )
         info_label.pack(anchor="w", pady=(4, 0))
         
-        # Frame scrollable para a tabela
-        table_frame = ctk.CTkScrollableFrame(card, height=280, fg_color="#2b2b2b")
-        table_frame.pack(fill="both", expand=True, padx=20, pady=(5, 10))
-        
-        # Criar cabeçalho da tabela
-        for col_idx, column in enumerate(display_columns):
-            header_frame = ctk.CTkFrame(
-                table_frame,
-                fg_color="gray25",
-                border_width=1,
-                border_color="gray40"
-            )
-            header_frame.grid(row=0, column=col_idx, padx=1, pady=1, sticky="ew")
-            
-            header = ctk.CTkLabel(
-                header_frame,
-                text=str(column),
-                font=ctk.CTkFont(size=12, weight="bold"),
-                anchor="w",
-                width=80 if column in ["Issue", "Status"] else 150
-            )
-            header.pack(padx=8, pady=6, fill="both", expand=True)
-        
-        # Preencher dados da tabela (limitado a 100 linhas)
-        max_rows = min(len(df_visual), 100)
-        for row_idx in range(max_rows):
-            for col_idx, column in enumerate(display_columns):
-                value = df_visual[column].iloc[row_idx]
-                cell_text = str(value) if pd.notna(value) else ""
-                if len(cell_text) > 50 and column != "DT. PREVISÃO ENTREGA":
-                    cell_text = cell_text[:47] + "..."
-                
-                cell_frame = ctk.CTkFrame(
-                    table_frame,
-                    fg_color="gray20",
-                    border_width=1,
-                    border_color="gray30"
-                )
-                cell_frame.grid(row=row_idx + 1, column=col_idx, padx=1, pady=1, sticky="ew")
-                
-                if column == "DT. PREVISÃO ENTREGA":
-                    entry = ctk.CTkEntry(
-                        cell_frame,
-                        font=ctk.CTkFont(size=11),
-                        width=150,
-                        height=28
-                    )
-                    entry.insert(0, cell_text)
-                    entry.pack(padx=4, pady=2, fill="both", expand=True)
-                    
-                    # Aplicar máscara de data
-                    aplicar_mascara_data(entry)
-                    
-                    entries_data.append((row_idx, column, entry))
-                else:
-                    cell = ctk.CTkLabel(
-                        cell_frame, 
-                        text=cell_text,
-                        font=ctk.CTkFont(size=11),
-                        anchor="w",
-                        width=80 if column in ["Issue", "Status"] else 150
-                    )
-                    cell.pack(padx=8, pady=4, fill="both", expand=True)
+        # Construir tabela pela primeira vez
+        reconstruir_tabela()
         
         # Aviso se houver mais linhas
         if len(df) > 100:
