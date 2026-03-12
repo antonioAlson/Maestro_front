@@ -178,6 +178,109 @@ def gerar_update_cards():
     return cards_update
 
 # ============================================================================
+# FUNÇÃO PARA MÁSCARA DE DATA
+# ============================================================================
+
+def aplicar_mascara_data(entry_widget):
+    """Aplica máscara DD/MM/YYYY no campo de entrada de data com visualização constante"""
+    
+    # Configurar valor inicial
+    valor_inicial = entry_widget.get()
+    if valor_inicial and valor_inicial.strip():
+        # Se já tem valor, extrair apenas números e reformatar
+        apenas_numeros = ''.join(filter(str.isdigit, valor_inicial))
+        if apenas_numeros:
+            mascara = list("__/__/____")
+            posicoes = [0, 1, 3, 4, 6, 7, 8, 9]
+            for i, num in enumerate(apenas_numeros[:8]):
+                mascara[posicoes[i]] = num
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, ''.join(mascara))
+        else:
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, "__/__/____")
+    else:
+        # Campo vazio, mostrar máscara
+        entry_widget.delete(0, "end")
+        entry_widget.insert(0, "__/__/____")
+        entry_widget.icursor(0)
+    
+    def formatar_mascara(texto):
+        """Formata o texto aplicando a máscara DD/MM/YYYY"""
+        apenas_numeros = ''.join(filter(str.isdigit, texto))[:8]
+        mascara = list("__/__/____")
+        posicoes = [0, 1, 3, 4, 6, 7, 8, 9]
+        for i, num in enumerate(apenas_numeros):
+            mascara[posicoes[i]] = num
+        return ''.join(mascara), apenas_numeros
+    
+    def on_key_release(event):
+        """Atualiza a máscara após cada tecla (exceto comandos Ctrl)"""
+        # Ignorar se está usando Ctrl (para permitir Ctrl+C, Ctrl+V, etc.)
+        if event.state & 0x4 or event.state & 0x40004:  # Control ou Control+Shift
+            return
+        
+        # Ignorar teclas de navegação
+        if event.keysym in ['Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Tab', 
+                            'Shift_L', 'Shift_R', 'Control_L', 'Control_R', 'Alt_L', 'Alt_R']:
+            return
+        
+        # Aplicar formatação
+        current_text = entry_widget.get()
+        texto_formatado, apenas_numeros = formatar_mascara(current_text)
+        
+        if texto_formatado != current_text:
+            # Atualizar o texto
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, texto_formatado)
+            
+            # Reposicionar cursor de forma inteligente
+            posicoes = [0, 1, 3, 4, 6, 7, 8, 9]
+            if len(apenas_numeros) < 8:
+                entry_widget.icursor(posicoes[len(apenas_numeros)])
+            else:
+                entry_widget.icursor(10)
+    
+    # Handler para Ctrl+V (colar)
+    def on_paste(event):
+        try:
+            # Pegar texto da área de transferência
+            clipboard_text = entry_widget.clipboard_get()
+            texto_formatado, apenas_numeros = formatar_mascara(clipboard_text)
+            
+            # Atualizar o campo
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, texto_formatado)
+            
+            # Posicionar cursor
+            posicoes = [0, 1, 3, 4, 6, 7, 8, 9]
+            if len(apenas_numeros) < 8:
+                entry_widget.icursor(posicoes[len(apenas_numeros)])
+            else:
+                entry_widget.icursor(10)
+            
+            return "break"
+        except:
+            return "break"
+    
+    # Ao clicar no campo, posicionar no primeiro underscore disponível
+    def on_focus(event):
+        current = entry_widget.get()
+        apenas_numeros = ''.join(filter(str.isdigit, current))
+        if len(apenas_numeros) < 8:
+            posicoes = [0, 1, 3, 4, 6, 7, 8, 9]
+            if apenas_numeros:
+                entry_widget.icursor(posicoes[len(apenas_numeros)])
+            else:
+                entry_widget.icursor(0)
+    
+    # Bindings
+    entry_widget.bind('<KeyRelease>', on_key_release)
+    entry_widget.bind('<<Paste>>', on_paste)
+    entry_widget.bind('<Control-v>', on_paste)
+    entry_widget.bind('<FocusIn>', on_focus)
+
+# ============================================================================
 # FUNÇÕES PARA SALVAR E ATUALIZAR JIRA
 # ============================================================================
 
@@ -616,6 +719,10 @@ def abrir_janela_visualizacao(main_app, df=None):
                     )
                     entry.insert(0, cell_text)
                     entry.pack(padx=4, pady=2, fill="both", expand=True)
+                    
+                    # Aplicar máscara de data
+                    aplicar_mascara_data(entry)
+                    
                     entries_data.append((row_idx, column, entry))
                 else:
                     cell = ctk.CTkLabel(
