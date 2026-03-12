@@ -3,6 +3,7 @@ from PIL import Image
 import os
 import subprocess
 import threading
+import re
 import sys
 import tkinter as tk
 
@@ -374,7 +375,7 @@ class SidebarApp:
             "Gerar Relatório",
             "Adicionar Datas",
             "Reprogramar Atrasos",
-            "Imprimir OPs"
+            "Imprimir OS"
         ]
         
         # Criar botoes em grade 2x2 (2 colunas, 2 linhas)
@@ -397,7 +398,7 @@ class SidebarApp:
         """Mostra popup de carregamento centralizado"""
         self.loading_popup = ctk.CTkToplevel(self.root)
         self.loading_popup.title("Aguarde")
-        self.loading_popup.geometry("350x180")
+        self.loading_popup.geometry("550x400")
         self.loading_popup.resizable(False, False)
         
         # Centralizar baseado na janela principal
@@ -413,8 +414,8 @@ class SidebarApp:
         root_width = self.root.winfo_width()
         root_height = self.root.winfo_height()
         
-        popup_width = 350
-        popup_height = 180
+        popup_width = 550
+        popup_height = 400
         
         x = root_x + (root_width - popup_width) // 2
         y = root_y + (root_height - popup_height) // 2
@@ -442,6 +443,14 @@ class SidebarApp:
         )
         self.progress_label.pack(pady=5)
         
+        # Textbox para mostrar log em tempo real
+        self.log_textbox = ctk.CTkTextbox(
+            self.loading_popup,
+            height=200,
+            font=ctk.CTkFont(size=11)
+        )
+        self.log_textbox.pack(pady=(10, 20), padx=20, fill="both", expand=True)
+        
         return self.loading_popup
     
     def update_progress(self, value):
@@ -450,6 +459,57 @@ class SidebarApp:
             self.progress_bar.set(value)
         if hasattr(self, 'progress_label') and self.progress_label:
             self.progress_label.configure(text=f"{int(value * 100)}%")
+    
+    def append_log(self, text):
+        """Adiciona texto ao log do popup de carregamento"""
+        if hasattr(self, 'log_textbox') and self.log_textbox:
+            self.log_textbox.insert("end", text + "\n")
+            self.log_textbox.see("end")  # Auto-scroll para o final
+    
+    def add_close_button_to_popup(self):
+        """Adiciona botões de ação ao popup de carregamento após conclusão"""
+        if hasattr(self, 'loading_popup') and self.loading_popup:
+            # Frame para os botões
+            buttons_frame = ctk.CTkFrame(self.loading_popup, fg_color="transparent")
+            buttons_frame.pack(pady=(0, 10))
+            
+            # Botão Abrir Pasta
+            open_folder_btn = ctk.CTkButton(
+                buttons_frame,
+                text="📁 Abrir Pasta",
+                command=self.open_download_folder,
+                width=140,
+                height=35,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#1f6aa5",
+                hover_color="#2f7dc2"
+            )
+            open_folder_btn.pack(side="left", padx=5)
+            
+            # Botão Fechar
+            close_btn = ctk.CTkButton(
+                buttons_frame,
+                text="Fechar",
+                command=self.close_loading_popup,
+                width=140,
+                height=35,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#2a9d2a",
+                hover_color="#238a23"
+            )
+            close_btn.pack(side="left", padx=5)
+    
+    def open_download_folder(self):
+        """Abre a pasta onde o ZIP foi salvo"""
+        folder_path = os.path.join("src", "temp", "download_os")
+        abs_path = os.path.abspath(folder_path)
+        
+        # Criar pasta se não existir
+        os.makedirs(abs_path, exist_ok=True)
+        
+        # Abrir no Windows Explorer
+        if os.path.exists(abs_path):
+            os.startfile(abs_path)
     
     def show_success_message(self, script_name, file_path=None):
         """Mostra mensagem de sucesso no popup"""
@@ -1114,9 +1174,15 @@ class SidebarApp:
         progress_thread = threading.Thread(target=simulate_progress, daemon=True)
         progress_thread.start()
     
-    def run_script_with_loading(self, script_path, script_name, output_file=None):
+    def run_script_with_loading(self, script_path, script_name, output_file=None, script_args=None):
         """Executa script em thread separada com popup de carregamento"""
+        print(f"\n>>> run_script_with_loading INICIADO <<<")
+        print(f">>> Script: {script_name}")
+        print(f">>> Caminho: {script_path}")
+        print(f">>> Argumentos: {script_args}")
+        
         self.script_running = True
+        script_args = script_args or []
         
         def simulate_progress():
             """Simula progresso enquanto o script está rodando"""
@@ -1130,17 +1196,37 @@ class SidebarApp:
             try:
                 print(f"Executando script: {script_path}")
                 print(f"Arquivo esperado: {output_file}")
-                result = subprocess.run(["python", script_path], 
-                                      capture_output=True, 
-                                      text=True,
-                                      shell=True)
+                command = ["python", script_path] + script_args
+                print(f"Comando: {' '.join(command)}")
+                
+                # Usar Popen para capturar saída em tempo real
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                # Ler saída linha por linha e mostrar no log
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        line = line.rstrip()
+                        print(line)  # Imprimir no console também
+                        self.root.after(0, lambda l=line: self.append_log(l))
+                
+                process.wait()
+                
                 print(f"Script {script_name} finalizado!")
-                if result.stdout:
-                    print(f"Saída: {result.stdout}")
-                if result.stderr:
-                    print(f"Erros: {result.stderr}")
+                print(f"Código de saída: {process.returncode}")
+                
             except Exception as e:
-                print(f"Erro ao executar o script: {e}")
+                error_msg = f"Erro ao executar o script: {e}"
+                print(error_msg)
+                self.root.after(0, lambda: self.append_log(error_msg))
             finally:
                 success_output_file = output_file
 
@@ -1164,6 +1250,11 @@ class SidebarApp:
                 # Parar simulação, completar progresso
                 self.script_running = False
                 self.root.after(0, lambda: self.update_progress(1.0))
+                
+                # Para "Imprimir OS", manter o popup aberto com botão fechar
+                if script_name == "Imprimir OS":
+                    self.root.after(500, lambda: self.add_close_button_to_popup())
+                    return
                 
                 # Se for "Adicionar Datas", abrir diretamente a visualização
                 if script_name == "Adicionar Datas" and output_file:
@@ -1213,10 +1304,91 @@ class SidebarApp:
         # Iniciar thread de simulação de progresso
         progress_thread = threading.Thread(target=simulate_progress, daemon=True)
         progress_thread.start()
+
+    def parse_card_ids_input(self, raw_text):
+        """Converte texto livre em lista de IDs do card, aceitando separadores comuns."""
+        if not raw_text:
+            return []
+        return [value.strip() for value in re.split(r"[,;\s]+", raw_text) if value.strip()]
+
+    def request_card_ids_to_print(self):
+        """Solicita os IDs dos cards que devem ser processados no script de impressão."""
+        popup = ctk.CTkToplevel(self.root)
+        popup.title("Imprimir OS")
+        popup.geometry("420x360")
+        popup.resizable(False, False)
+        popup.transient(self.root)
+        popup.grab_set()
+
+        self.root.update_idletasks()
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        popup_width = 420
+        popup_height = 360
+        x = root_x + (root_width - popup_width) // 2
+        y = root_y + (root_height - popup_height) // 2
+        popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
+
+        label = ctk.CTkLabel(
+            popup,
+            text="Cole os IDs dos cards (uma por linha, ou separados por vírgula):",
+            font=ctk.CTkFont(size=13, weight="bold")
+        )
+        label.pack(anchor="w", padx=16, pady=(16, 8))
+
+        textbox = ctk.CTkTextbox(popup, height=220)
+        textbox.pack(fill="both", expand=True, padx=16)
+        textbox.focus_set()
+
+        buttons_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        buttons_frame.pack(fill="x", padx=16, pady=14)
+
+        result = {"card_ids": None}
+
+        def on_confirm():
+            raw_text = textbox.get("1.0", "end").strip()
+            card_ids = self.parse_card_ids_input(raw_text)
+            if card_ids:
+                print("IDs de card informados para impressão:")
+                for card_id in card_ids:
+                    print(card_id)
+                result["card_ids"] = card_ids
+            popup.destroy()
+
+        def on_cancel():
+            result["card_ids"] = None
+            popup.destroy()
+
+        cancel_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Cancelar",
+            command=on_cancel,
+            width=110,
+            fg_color="gray40",
+            hover_color="gray50"
+        )
+        cancel_btn.pack(side="right")
+
+        confirm_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Confirmar",
+            command=on_confirm,
+            width=110
+        )
+        confirm_btn.pack(side="right", padx=(0, 8))
+
+        popup.protocol("WM_DELETE_WINDOW", on_cancel)
+        self.root.wait_window(popup)
+        return result["card_ids"]
     
     def pcp_routine_action(self, routine_name):
         """Ação executada ao clicar em uma rotina PCP"""
-        print(f"Rotina selecionada: {routine_name}")
+        print(f"\n>>> pcp_routine_action chamada <<<")
+        print(f">>> Rotina selecionada: '{routine_name}'")
+        print(f">>> Tipo: {type(routine_name)}")
+        print(f">>> Comparação com 'Imprimir OS': {routine_name == 'Imprimir OS'}")
         
         if routine_name == "Gerar Relatório":
             # Executar o script new_archive.py com popup de carregamento
@@ -1228,6 +1400,35 @@ class SidebarApp:
         elif routine_name == "Adicionar Datas":
             # Executar função diretamente ao invés de subprocess
             self.run_update_dates_with_loading()
+
+        elif routine_name == "Imprimir OS":
+            print("\n" + "="*60)
+            print(">>> BOTÃO IMPRIMIR OS CLICADO <<<")
+            print("="*60)
+            # Solicitar IDs do card e executar script de download somente para os itens informados
+            card_ids_to_print = self.request_card_ids_to_print()
+            print(f"IDs retornados do popup: {card_ids_to_print}")
+            
+            if not card_ids_to_print:
+                print("Execução cancelada: nenhum ID informado.")
+                return
+
+            script_path = os.path.join("scripts", "download_ops", "download_ops")
+            print(f"Caminho do script: {script_path}")
+            print(f"Script existe? {os.path.exists(script_path)}")
+            
+            self.run_script_with_loading(
+                script_path,
+                "Imprimir OS",
+                script_args=["--ids", ",".join(card_ids_to_print)]
+            )
+        
+        else:
+            print(f"\n⚠️ AVISO: Rotina '{routine_name}' não tem ação definida!")
+            print("Rotinas disponíveis:")
+            print("  - Gerar Relatório")
+            print("  - Adicionar Datas")
+            print("  - Imprimir OS")
         
         # Adicione aqui a lógica específica para outras rotinas
     

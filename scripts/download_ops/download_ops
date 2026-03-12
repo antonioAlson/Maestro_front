@@ -1,9 +1,19 @@
 import requests
 from requests.auth import HTTPBasicAuth
-import pandas as pd
 import os
 import shutil
+import argparse
+import re
+import sys
+import io
+import zipfile
+from datetime import datetime
 from dotenv import load_dotenv
+
+# Configurar saída UTF-8 para Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -12,41 +22,103 @@ JIRA_URL = os.getenv("JIRA_URL")
 EMAIL = os.getenv("EMAIL")
 API_TOKEN = os.getenv("API_TOKEN")
 
+print("=" * 60)
+print("DOWNLOAD DE PDFs - INICIADO")
+print("=" * 60)
+sys.stdout.flush()
 
-origem = r".\src\data_update\update_cards.xlsx"
-destino = r".\src\downloads_ops\update_cards.xlsx"
+def parse_args():
+    parser = argparse.ArgumentParser(description="Download de PDFs dos cards selecionados por ID.")
+    parser.add_argument(
+        "--ids",
+        default="",
+        help="Lista de IDs dos cards separados por virgula. Exemplo: 31164,31088"
+    )
+    parser.add_argument(
+        "--ops",
+        default="",
+        help="Compatibilidade legado: aceita lista separada por virgula e trata como IDs"
+    )
+    return parser.parse_args()
 
-shutil.move(origem, destino)
 
-# Caminho do arquivo Excel com os cards
-ARQUIVO_CARDS = destino
+def get_typed_codes(raw_values):
+    """Extrai lista de códigos do texto informado"""
+    if not raw_values:
+        return []
+    return [value.strip() for value in re.split(r"[,;\s]+", raw_values) if value.strip()]
+
+
+def find_attachment_by_os(attachments, os_code):
+    os_code_norm = str(os_code).strip().lower()
+    for attachment in attachments:
+        filename = str(attachment.get("filename", "")).strip()
+        filename_norm = filename.lower()
+        if filename_norm.endswith(".pdf") and os_code_norm in filename_norm:
+            return attachment
+    return None
+
+args = parse_args()
+raw_values = args.ids or args.ops
+typed_codes = get_typed_codes(raw_values)
+
+# Diretório de logs
+PASTA_LOGS = r".\src\temp\download_os"
+os.makedirs(PASTA_LOGS, exist_ok=True)
+
+# Criar arquivo de log com timestamp
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+log_file_path = os.path.join(PASTA_LOGS, f"download_{timestamp}.log")
+log_file = open(log_file_path, "w", encoding="utf-8")
+
+# Escrever cabeçalho do log
+log_file.write(f"{'='*60}\n")
+log_file.write(f"DOWNLOAD DE PDFs - INICIADO\n")
+log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+log_file.write(f"{'='*60}\n\n")
+
+if not typed_codes:
+    msg = "⚠️ Nenhum ID foi informado!"
+    print(f"\n{msg}")
+    log_file.write(f"{msg}\n")
+    log_file.close()
+    sys.stdout.flush()
+    raise SystemExit(1)
+
+print(f"\n📋 IDs para processar: {len(typed_codes)}")
+log_file.write(f"📋 IDs para processar: {len(typed_codes)}\n")
+for code in typed_codes:
+    print(f"   • {code}")
+    log_file.write(f"   • {code}\n")
+sys.stdout.flush()
+
+print(f"\n🚀 Iniciando downloads...")
+log_file.write(f"\n🚀 Iniciando downloads...\n")
+log_file.write(f"{'='*60}\n\n")
+sys.stdout.flush()
 
 # Diretório onde os PDFs serão salvos
 PASTA_PDFS = r".\src\downloads_ops\pdfs"
 
 # Limpar pasta de PDFs se existir
 if os.path.exists(PASTA_PDFS):
-    print("🗑️  Limpando pasta de PDFs...")
     shutil.rmtree(PASTA_PDFS)
-    print("✅ Pasta limpa!")
 
 # Criar diretório
 os.makedirs(PASTA_PDFS, exist_ok=True)
 
-# Ler o arquivo Excel
-df = pd.read_excel(ARQUIVO_CARDS)
+# Contadores
+pdfs_baixados = 0
+pdfs_erro = 0
+total_bytes = 0
 
-print(f"\n📋 Total de cards a processar: {len(df)}")
+print()  # Linha em branco antes de começar
 
-# Processar cada card
-for index, row in df.iterrows():
-    issue_key = row["ID"]
-    resumo = row["Resumo"]
+# Processar cada ID informado
+for index, card_id in enumerate(typed_codes, 1):
     
-    print(f"\n[{index+1}/{len(df)}] Processando {issue_key} - {resumo}")
-    
-    # Buscar informações do issue incluindo anexos
-    url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}"
+    # Buscar informações do card no Jira incluindo anexos
+    url = f"{JIRA_URL}/rest/api/3/issue/{card_id}"
     
     response = requests.get(
         url,
@@ -55,50 +127,133 @@ for index, row in df.iterrows():
     )
     
     if response.status_code != 200:
-        print(f"  ❌ Erro ao buscar {issue_key}: {response.status_code}")
+        pdfs_erro += 1
+        log_file.write(f"❌ Card {card_id}: Erro ao buscar card (status {response.status_code})\n")
         continue
     
     data = response.json()
-    attachments = data.get("fields", {}).get("attachment", [])
+    fields = data.get("fields", {})
+    resumo = fields.get("summary", "")
     
-    if not attachments:
-        print(f"  ⚠️ Nenhum anexo encontrado")
+    # Extrair OS do resumo (procurar sequência numérica de 4+ dígitos)
+    os_match = re.search(r"\b(\d{4,})\b", resumo)
+    if not os_match:
+        pdfs_erro += 1
+        log_file.write(f"❌ Card {card_id}: OS não encontrada no resumo '{resumo}'\n")
         continue
     
-    # Procurar pelo PDF específico com o nome igual ao Resumo
-    pdf_filename_esperado = f"{resumo}.pdf"
-    pdf_encontrado = False
+    os_code = os_match.group(1)
+    attachments = fields.get("attachment", [])
     
-    for attachment in attachments:
-        filename = attachment.get("filename", "")
+    if not attachments:
+        pdfs_erro += 1
+        log_file.write(f"❌ Card {card_id} (OS {os_code}): Sem anexos\n")
+        continue
+
+    attachment = find_attachment_by_os(attachments, os_code)
+    if not attachment:
+        pdfs_erro += 1
+        log_file.write(f"❌ Card {card_id} (OS {os_code}): PDF não encontrado nos anexos\n")
+        continue
+
+    filename = attachment.get("filename", "")
+    download_url = attachment.get("content")
+    pdf_path = os.path.join(PASTA_PDFS, filename)
+    
+    pdf_response = requests.get(
+        download_url,
+        auth=HTTPBasicAuth(EMAIL, API_TOKEN)
+    )
+
+    if pdf_response.status_code == 200:
+        file_size = len(pdf_response.content)
+        total_bytes += file_size
+        total_mb = total_bytes / (1024 * 1024)
         
-        # Verificar se o nome do arquivo corresponde ao Resumo.pdf
-        if filename.lower() == pdf_filename_esperado.lower():
-            download_url = attachment.get("content")
-            pdf_path = os.path.join(PASTA_PDFS, pdf_filename_esperado)
-            
-            # Baixar o PDF
-            print(f"  📥 Baixando: {filename}")
-            pdf_response = requests.get(
-                download_url,
-                auth=HTTPBasicAuth(EMAIL, API_TOKEN)
-            )
-            
-            if pdf_response.status_code == 200:
-                with open(pdf_path, "wb") as f:
-                    f.write(pdf_response.content)
-                print(f"  ✅ Salvo como: {pdf_filename_esperado}")
-                pdf_encontrado = True
-                break
-            else:
-                print(f"  ❌ Erro ao baixar PDF: {pdf_response.status_code}")
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_response.content)
+        
+        pdfs_baixados += 1
+        file_mb = file_size / (1024 * 1024)
+        
+        # Registrar no log
+        log_file.write(f"✅ Card {card_id} (OS {os_code}): {filename} - {file_mb:.2f} MB\n")
+        
+        # Truncar nome do arquivo se necessário
+        display_name = filename if len(filename) <= 35 else filename[:32] + "..."
+        
+        # Sobrescrever a linha com \r
+        line = f"\r✅ Baixados: {pdfs_baixados}/{len(typed_codes)}  |  💾 {display_name}  ({total_mb:.1f} MB)          "
+        sys.stdout.write(line)
+        sys.stdout.flush()
+    else:
+        pdfs_erro += 1
+        log_file.write(f"❌ Card {card_id} (OS {os_code}): Erro ao baixar PDF (status {pdf_response.status_code})\n")
+
+# Nova linha após o loop
+print()
+
+total_mb_final = total_bytes / (1024 * 1024)
+
+# Criar ZIP com todos os PDFs baixados
+if pdfs_baixados > 0:
+    print("\n📦 Criando arquivo ZIP...")
+    sys.stdout.flush()
     
-    if not pdf_encontrado:
-        print(f"  ⚠️ PDF '{pdf_filename_esperado}' não encontrado nos anexos")
+    # Nome do arquivo ZIP no formato: os_prod dd.mm.aaaa hh-mm
+    zip_timestamp = datetime.now().strftime("%d.%m.%Y %H-%M")
+    zip_filename = f"os_prod {zip_timestamp}.zip"
+    zip_path = os.path.join(PASTA_LOGS, zip_filename)
+    
+    # Criar o ZIP
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for pdf_file in os.listdir(PASTA_PDFS):
+            if pdf_file.endswith('.pdf'):
+                pdf_path_full = os.path.join(PASTA_PDFS, pdf_file)
+                zipf.write(pdf_path_full, pdf_file)
+    
+    zip_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
+    print(f"✅ ZIP criado: {zip_filename} ({zip_size_mb:.2f} MB)")
+    sys.stdout.flush()
+    
+    # Limpar pasta de PDFs após criar o ZIP
+    print("🧹 Limpando pasta de PDFs...")
+    if os.path.exists(PASTA_PDFS):
+        shutil.rmtree(PASTA_PDFS)
+        os.makedirs(PASTA_PDFS, exist_ok=True)
+    print("✅ Pasta limpa!")
+    sys.stdout.flush()
+else:
+    zip_path = None
+    zip_filename = None
+    zip_size_mb = 0
 
-origem = r".\src\downloads_ops\update_cards.xlsx"
-destino = r".\src\temp\update_cards\update_cards.xlsx"
+# Escrever resumo no log
+log_file.write(f"\n{'='*60}\n")
+log_file.write(f"CONCLUÍDO - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+log_file.write(f"{'='*60}\n")
+log_file.write(f"✅ Baixados: {pdfs_baixados}/{len(typed_codes)}\n")
+if pdfs_erro > 0:
+    log_file.write(f"❌ Erros/Ignorados: {pdfs_erro}\n")
+log_file.write(f"💾 Total: {total_mb_final:.2f} MB\n")
+log_file.write(f"📁 Pasta PDFs: {os.path.abspath(PASTA_PDFS)}\n")
+if zip_path:
+    log_file.write(f"📦 ZIP: {zip_filename} ({zip_size_mb:.2f} MB)\n")
+    log_file.write(f"📁 Caminho ZIP: {os.path.abspath(zip_path)}\n")
+log_file.write(f"📄 Log salvo em: {os.path.abspath(log_file_path)}\n")
+log_file.write(f"{'='*60}\n")
+log_file.close()
 
-shutil.move(origem, destino)
-
-print(f"\n✅ Processamento concluído!")
+print(f"\n{'='*60}")
+print(f"CONCLUÍDO!")
+print(f"{'='*60}")
+print(f"✅ Baixados: {pdfs_baixados}/{len(typed_codes)}")
+if pdfs_erro > 0:
+    print(f"❌ Erros/Ignorados: {pdfs_erro}")
+print(f"💾 Total: {total_mb_final:.2f} MB")
+print(f"📁 Pasta: {os.path.abspath(PASTA_PDFS)}")
+if zip_path:
+    print(f"📦 ZIP: {os.path.abspath(zip_path)}")
+print(f"📄 Log: {os.path.abspath(log_file_path)}")
+print(f"{'='*60}")
+sys.stdout.flush()
