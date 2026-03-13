@@ -288,58 +288,115 @@ def aplicar_mascara_data(entry_widget):
 # FUNÇÕES PARA SALVAR E ATUALIZAR JIRA
 # ============================================================================
 
+def mostrar_popup_carregamento_jira(excel_window):
+    """Mostra popup de carregamento durante a atualização no Jira."""
+    popup = ctk.CTkToplevel(excel_window)
+    popup.title("Aguarde")
+    popup.geometry("360x160")
+    popup.resizable(False, False)
+
+    popup.update_idletasks()
+    excel_window.update_idletasks()
+
+    width = 360
+    height = 160
+    x = excel_window.winfo_x() + (excel_window.winfo_width() - width) // 2
+    y = excel_window.winfo_y() + (excel_window.winfo_height() - height) // 2
+    popup.geometry(f"{width}x{height}+{x}+{y}")
+
+    popup.transient(excel_window)
+    popup.lift()
+    popup.focus_force()
+    popup.attributes('-topmost', True)
+    popup.after(100, lambda: popup.attributes('-topmost', False))
+
+    ctk.CTkLabel(
+        popup,
+        text="Salvando alterações e atualizando Jira...",
+        font=ctk.CTkFont(size=14, weight="bold")
+    ).pack(pady=(24, 12))
+
+    progress = ctk.CTkProgressBar(popup, mode="indeterminate", width=280)
+    progress.pack(pady=(0, 12))
+    progress.start()
+
+    ctk.CTkLabel(
+        popup,
+        text="Isso pode levar alguns segundos.",
+        font=ctk.CTkFont(size=11),
+        text_color="gray70"
+    ).pack()
+
+    return popup
+
+
+def fechar_popup_carregamento_jira(popup):
+    """Fecha popup de carregamento de forma segura."""
+    try:
+        if popup is not None and popup.winfo_exists():
+            popup.destroy()
+    except Exception:
+        pass
+
 def salvar_e_atualizar_jira(df_source, entries_data, card, excel_window):
     """Aplica alteracoes no DataFrame em memoria e atualiza no Jira"""
-    try:
-        from datetime import datetime
-        
-        # Trabalhar com copia para nao alterar referencia original inesperadamente
-        df = df_source.copy()
-        
-        # Converter a coluna de data para datetime se necessário
-        if "Prev. de Entrega" in df.columns:
-            df["Prev. de Entrega"] = pd.to_datetime(df["Prev. de Entrega"], errors='coerce')
-        
-        # Atualizar todos os valores
-        for row_idx, column, entry in entries_data:
-            new_value = entry.get().strip()
-            if column == "Prev. de Entrega" and ("_" in new_value or new_value == "__/__/____"):
-                new_value = ""
+    loading_popup = mostrar_popup_carregamento_jira(excel_window)
+
+    def executar_fluxo_salvar_atualizar():
+        try:
+            from datetime import datetime
             
-            if column == "Prev. de Entrega":
-                if new_value:
-                    try:
-                        if "/" in new_value:
-                            date_obj = datetime.strptime(new_value, "%d/%m/%Y")
-                        elif "-" in new_value and len(new_value) == 10:
-                            try:
-                                date_obj = datetime.strptime(new_value, "%Y-%m-%d")
-                            except:
-                                date_obj = datetime.strptime(new_value, "%d-%m-%Y")
-                        else:
-                            date_obj = pd.to_datetime(new_value)
-                        
-                        df.at[row_idx, column] = pd.Timestamp(date_obj)
-                    except (ValueError, Exception) as e:
-                        print(f"Aviso: Formato de data inválido '{new_value}' na linha {row_idx}")
+            # Trabalhar com copia para nao alterar referencia original inesperadamente
+            df = df_source.copy()
+            
+            # Converter a coluna de data para datetime se necessário
+            if "Prev. de Entrega" in df.columns:
+                df["Prev. de Entrega"] = pd.to_datetime(df["Prev. de Entrega"], errors='coerce')
+            
+            # Atualizar todos os valores
+            for row_idx, column, entry in entries_data:
+                new_value = entry.get().strip()
+                if column == "Prev. de Entrega" and ("_" in new_value or new_value == "__/__/____"):
+                    new_value = ""
+                
+                if column == "Prev. de Entrega":
+                    if new_value:
+                        try:
+                            if "/" in new_value:
+                                date_obj = datetime.strptime(new_value, "%d/%m/%Y")
+                            elif "-" in new_value and len(new_value) == 10:
+                                try:
+                                    date_obj = datetime.strptime(new_value, "%Y-%m-%d")
+                                except:
+                                    date_obj = datetime.strptime(new_value, "%d-%m-%Y")
+                            else:
+                                date_obj = pd.to_datetime(new_value)
+                            
+                            df.at[row_idx, column] = pd.Timestamp(date_obj)
+                        except (ValueError, Exception):
+                            print(f"Aviso: Formato de data inválido '{new_value}' na linha {row_idx}")
+                            df.at[row_idx, column] = pd.NaT
+                    else:
                         df.at[row_idx, column] = pd.NaT
                 else:
-                    df.at[row_idx, column] = pd.NaT
-            else:
-                df.at[row_idx, column] = new_value if new_value else ""
+                    df.at[row_idx, column] = new_value if new_value else ""
 
-        print("✓ Dados atualizados em memoria!")
-        
-        # Atualizar Jira
-        atualizar_jira_dates(df, card, excel_window)
-        
-    except Exception as e:
-        print(f"Erro ao salvar alterações: {e}")
-        import traceback
-        traceback.print_exc()
+            print("✓ Dados atualizados em memoria!")
+            
+            # Atualizar Jira
+            atualizar_jira_dates(df, card, excel_window, loading_popup)
+            
+        except Exception as e:
+            fechar_popup_carregamento_jira(loading_popup)
+            print(f"Erro ao salvar alterações: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Aguarda um ciclo de UI para garantir que o popup apareça antes do processamento.
+    excel_window.after(50, executar_fluxo_salvar_atualizar)
 
 
-def atualizar_jira_dates(df, card, excel_window):
+def atualizar_jira_dates(df, card, excel_window, loading_popup=None):
     """Atualiza as datas no Jira baseado no DataFrame em memoria"""
     try:
         from datetime import datetime
@@ -351,6 +408,7 @@ def atualizar_jira_dates(df, card, excel_window):
         
         if len(df_update) == 0:
             print("Nenhuma data para atualizar no Jira")
+            fechar_popup_carregamento_jira(loading_popup)
             mostrar_resultado_jira(0, 0, card, excel_window)
             return
         
@@ -408,9 +466,11 @@ def atualizar_jira_dates(df, card, excel_window):
         
         # Mostrar resultado
         print(f"\nAtualização concluída: {success_count} sucesso, {error_count} erros")
+        fechar_popup_carregamento_jira(loading_popup)
         mostrar_resultado_jira(success_count, error_count, card, excel_window)
         
     except Exception as e:
+        fechar_popup_carregamento_jira(loading_popup)
         print(f"Erro ao atualizar Jira: {e}")
         import traceback
         traceback.print_exc()
@@ -765,22 +825,25 @@ def abrir_janela_visualizacao(main_app, df=None):
 
                 def largura_coluna(coluna):
                     if coluna == "Tipo - OS":
-                        return 50
-                    if coluna in ["Status", "SITUAÇÃO"]:
-                        return 50
+                        return 98
+                    if coluna == "Status":
+                        return 114
+                    if coluna == "SITUAÇÃO":
+                        return 120
                     if coluna == "Veículo":
-                        return 310
+                        return 240
                     if coluna == "Prev. de Entrega":
-                        return 80
-                    return 180
+                        return 150
+                    return 200
 
-                col_widths = [largura_coluna(col) for col in valid_columns]
+                header_col_widths = [largura_coluna(col) for col in valid_columns]
+                body_col_widths = [320 if col == "Veículo" else header_col_widths[idx] for idx, col in enumerate(valid_columns)]
                 
                 # Criar frame fixo para o cabeçalho
                 header_container = ctk.CTkFrame(table_container, fg_color="#2b2b2b")
-                header_container.grid(row=0, column=0, sticky="ew")
+                header_container.grid(row=0, column=0, sticky="nw", padx=(6, 0))
                 
-                for col_idx, col_width in enumerate(col_widths):
+                for col_idx, col_width in enumerate(header_col_widths):
                     header_container.grid_columnconfigure(col_idx, weight=0, minsize=col_width)
                 header_container.grid_rowconfigure(0, minsize=38)
                 
@@ -791,16 +854,19 @@ def abrir_janela_visualizacao(main_app, df=None):
                         fg_color="gray25",
                         border_width=1,
                         border_color="gray40",
-                        width=col_widths[col_grid_idx],
+                        width=header_col_widths[col_grid_idx],
                         height=38
                     )
                     header_frame.grid(row=0, column=col_grid_idx, padx=1, pady=1, sticky="nsew")
                     header_frame.grid_propagate(False)
+                    header_frame.pack_propagate(False)
                     
                     # Texto do cabeçalho com indicador de ordenação
                     header_text = str(column)
                     if current_sort_column == column:
                         header_text += " ▼" if not current_sort_ascending else " ▲"
+                    if column in column_filters and column_filters[column]:
+                        header_text += " *"
                     
                     header_btn = ctk.CTkButton(
                         header_frame,
@@ -809,28 +875,19 @@ def abrir_janela_visualizacao(main_app, df=None):
                         fg_color="gray25",
                         hover_color="gray35",
                         text_color="white",
-                        command=lambda col=column: ordenar_por_clique(col)
+                        anchor="w",
+                        command=lambda col=column: mostrar_filtro(col) if col in filterable_columns else ordenar_por_clique(col)
                     )
-                    header_btn.pack(side="left", padx=(2, 1), pady=2, fill="both", expand=True)
-
-                    if column in filterable_columns:
-                        filtro_btn = ctk.CTkButton(
-                            header_frame,
-                            text="🔍" if column in column_filters and column_filters[column] else "≡",
-                            width=28,
-                            fg_color="gray30",
-                            hover_color="gray40",
-                            command=lambda col=column: mostrar_filtro(col)
-                        )
-                        filtro_btn.pack(side="right", padx=(1, 2), pady=2)
+                    header_btn.pack(padx=2, pady=2, fill="both", expand=True)
                 
                 # Criar frame scrollável para os dados
                 table_frame = ctk.CTkScrollableFrame(table_container, fg_color="#2b2b2b")
                 table_frame.grid(row=1, column=0, sticky="nsew")
                 table_frame_ref[0] = table_frame
                 
-                for col_idx, col_width in enumerate(col_widths):
-                    table_frame.grid_columnconfigure(col_idx, weight=0, minsize=col_width)
+                # Configurar larguras das colunas do corpo
+                for col_idx, body_width in enumerate(body_col_widths):
+                    table_frame.grid_columnconfigure(col_idx, weight=0, minsize=body_width)
                 
                 # Preencher dados do corpo
                 max_rows = min(len(df_atualizado), 100)
@@ -856,12 +913,15 @@ def abrir_janela_visualizacao(main_app, df=None):
                         elif len(cell_text) > 50 and column != "Prev. de Entrega":
                             cell_text = cell_text[:47] + "..."
                         
+                        # Largura fixa de célula do corpo por coluna
+                        cell_width = body_col_widths[col_idx]
+                        
                         cell_frame = ctk.CTkFrame(
                             table_frame,
                             fg_color="gray20",
                             border_width=1,
                             border_color="gray30",
-                            width=col_widths[col_idx],
+                            width=cell_width,
                             height=34
                         )
                         cell_frame.grid(row=row_idx, column=col_idx, padx=1, pady=1, sticky="nsew")
@@ -893,15 +953,6 @@ def abrir_janela_visualizacao(main_app, df=None):
                 # Forçar atualização da interface
                 table_frame.update_idletasks()
                 table_container.update_idletasks()
-
-                # Ajustar o cabeçalho para ter a mesma largura útil do corpo
-                scrollbar_width = 0
-                try:
-                    if table_frame._scrollbar.winfo_ismapped():
-                        scrollbar_width = max(0, table_frame._scrollbar.winfo_width())
-                except Exception:
-                    scrollbar_width = 0
-                header_container.grid_configure(padx=(0, scrollbar_width + 2))
 
                 table_container.grid_columnconfigure(0, weight=1)
                 table_container.grid_rowconfigure(0, weight=0)
@@ -1109,6 +1160,14 @@ def abrir_janela_visualizacao(main_app, df=None):
             text_color="gray65"
         )
         info_label.pack(anchor="w", pady=(4, 0))
+
+        filtro_hint_label = ctk.CTkLabel(
+            header_frame,
+            text="Para filtrar, clique no cabeçalho da coluna.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray70"
+        )
+        filtro_hint_label.pack(anchor="w", pady=(2, 0))
 
         # Container da tabela (cabeçalho fixo + corpo rolável)
         table_container = ctk.CTkFrame(card, fg_color="transparent")
