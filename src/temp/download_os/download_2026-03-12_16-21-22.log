@@ -1,0 +1,32 @@
+============================================================
+DOWNLOAD DE PDFs - INICIADO
+2026-03-12 16:21:22
+============================================================
+
+📋 IDs para processar: 5
+   • MANTA-30834
+   • MANTA-30833
+   • MANTA-30832
+   • MANTA-30831
+   • MANTA-30830
+
+🚀 Iniciando downloads...
+============================================================
+
+✅ Card MANTA-30834 (OS 1040818): 1040818 - FUN.pdf - 0.68 MB
+✅ Card MANTA-30833 (OS 1045711): 1045711 - FUN.pdf - 0.55 MB
+✅ Card MANTA-30832 (OS 1045153): 1045153 - 110326.pdf - 0.72 MB
+❌ Card MANTA-30831 (OS 113826): PDF não encontrado nos anexos
+❌ Card MANTA-30830 (OS 113762): PDF não encontrado nos anexos
+
+============================================================
+CONCLUÍDO - 2026-03-12 16:21:34
+============================================================
+✅ Baixados: 3/5
+❌ Erros/Ignorados: 2
+💾 Total: 1.95 MB
+📁 Pasta PDFs: C:\Users\guarino.silva\Documents\Maestro\src\downloads_ops\pdfs
+📦 ZIP: os_prod 12.03.2026 16-21.zip (1.80 MB)
+📁 Caminho ZIP: C:\Users\guarino.silva\Documents\Maestro\src\temp\download_os\os_prod 12.03.2026 16-21.zip
+📄 Log salvo em: C:\Users\guarino.silva\Documents\Maestro\src\temp\download_os\download_2026-03-12_16-21-22.log
+============================================================

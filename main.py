@@ -588,14 +588,14 @@ class SidebarApp:
             df = pd.read_excel(file_path)
             
             # Converter a coluna de data para datetime se necessário
-            if "DT. PREVISÃO ENTREGA" in df.columns:
-                df["DT. PREVISÃO ENTREGA"] = pd.to_datetime(df["DT. PREVISÃO ENTREGA"], errors='coerce')
+            if "Prev. de Entrega" in df.columns:
+                df["Prev. de Entrega"] = pd.to_datetime(df["Prev. de Entrega"], errors='coerce')
             
             # Atualizar todos os valores
             for row_idx, column, entry in entries_data:
                 new_value = entry.get().strip()
                 
-                if column == "DT. PREVISÃO ENTREGA":
+                if column == "Prev. de Entrega":
                     if new_value:
                         try:
                             if "/" in new_value:
@@ -656,16 +656,16 @@ class SidebarApp:
             df = pd.read_excel(file_path)
             
             # Converter a coluna de data para datetime se necessário
-            if "DT. PREVISÃO ENTREGA" in df.columns:
+            if "Prev. de Entrega" in df.columns:
                 # Converter para datetime, erros viram NaT
-                df["DT. PREVISÃO ENTREGA"] = pd.to_datetime(df["DT. PREVISÃO ENTREGA"], errors='coerce')
+                df["Prev. de Entrega"] = pd.to_datetime(df["Prev. de Entrega"], errors='coerce')
             
             # Atualizar todos os valores
             for row_idx, column, entry in entries_data:
                 new_value = entry.get().strip()
                 
                 # Se for a coluna de data
-                if column == "DT. PREVISÃO ENTREGA":
+                if column == "Prev. de Entrega":
                     if new_value:
                         try:
                             # Tentar converter de dd/mm/yyyy para datetime
@@ -745,7 +745,7 @@ class SidebarApp:
             df = pd.read_excel(file_path)
             
             # Filtrar apenas linhas com ID e data preenchidos
-            df_update = df[df["ID"].notna() & df["DT. PREVISÃO ENTREGA"].notna()].copy()
+            df_update = df[df["ID"].notna() & df["Prev. de Entrega"].notna()].copy()
             
             if len(df_update) == 0:
                 print("Nenhuma data para atualizar no Jira")
@@ -765,7 +765,7 @@ class SidebarApp:
             
             for index, row in df_update.iterrows():
                 issue_id = row["ID"]
-                data_entrega = row["DT. PREVISÃO ENTREGA"]
+                data_entrega = row["Prev. de Entrega"]
                 
                 # Converter para formato YYYY-MM-DD
                 try:
@@ -923,18 +923,22 @@ class SidebarApp:
             # Combinar Tipo de issue e Resumo em uma única coluna
             if "Tipo de issue" in df_visual.columns and "Resumo" in df_visual.columns:
                 # Converter para string para evitar erros de concatenação
-                df_visual["Issue"] = df_visual["Tipo de issue"].astype(str) + " - " + df_visual["Resumo"].astype(str)
+                df_visual["Tipo - OS"] = df_visual["Tipo de issue"].astype(str) + " - " + df_visual["Resumo"].astype(str)
                 # Remover as colunas originais na visualização
                 df_visual = df_visual.drop(columns=["Tipo de issue", "Resumo"])
+            elif "Issue" in df_visual.columns and "Tipo - OS" not in df_visual.columns:
+                df_visual = df_visual.rename(columns={"Issue": "Tipo - OS"})
+            elif "OS" in df_visual.columns and "Tipo - OS" not in df_visual.columns:
+                df_visual = df_visual.rename(columns={"OS": "Tipo - OS"})
             
             # Filtrar colunas (remover ID e Chave)
             columns_to_hide = ["ID", "Chave"]
             display_columns = [col for col in df_visual.columns if col not in columns_to_hide]
             
-            # Reorganizar para colocar Issue em primeiro
-            if "Issue" in display_columns:
-                display_columns.remove("Issue")
-                display_columns.insert(0, "Issue")
+            # Reorganizar para colocar Tipo - OS em primeiro
+            if "Tipo - OS" in display_columns:
+                display_columns.remove("Tipo - OS")
+                display_columns.insert(0, "Tipo - OS")
             
             print(f"Colunas a exibir: {display_columns}")
             print("Criando nova janela...")
@@ -990,6 +994,20 @@ class SidebarApp:
             table_frame = ctk.CTkScrollableFrame(card, height=280)
             table_frame.pack(fill="both", expand=True, padx=15, pady=10)
             print("Frame scrollable criado")
+
+            def largura_coluna(column_name):
+                if column_name in ["Tipo - OS", "Status", "SITUAÇÃO"]:
+                    return 50
+                if column_name == "Veículo":
+                    return 310
+                if column_name == "Prev. de Entrega":
+                    return 80
+                return 150
+
+            col_widths = [largura_coluna(col) for col in display_columns]
+            for col_idx, col_width in enumerate(col_widths):
+                table_frame.grid_columnconfigure(col_idx, weight=0, minsize=col_width)
+            table_frame.grid_rowconfigure(0, minsize=38)
             
             # Criar cabeçalho da tabela
             print(f"Criando cabeçalho com {len(display_columns)} colunas")
@@ -998,16 +1016,18 @@ class SidebarApp:
                     table_frame,
                     fg_color="gray25",
                     border_width=1,
-                    border_color="gray40"
+                    border_color="gray40",
+                    width=col_widths[col_idx],
+                    height=38
                 )
-                header_frame.grid(row=0, column=col_idx, padx=1, pady=1, sticky="ew")
+                header_frame.grid(row=0, column=col_idx, padx=1, pady=1, sticky="nsew")
+                header_frame.grid_propagate(False)
                 
                 header = ctk.CTkLabel(
                     header_frame,
                     text=str(column),
                     font=ctk.CTkFont(size=12, weight="bold"),
-                    anchor="w",
-                    width=80 if column in ["Issue", "Status"] else 150
+                    anchor="w"
                 )
                 header.pack(padx=8, pady=6, fill="both", expand=True)
             print("Cabeçalho criado")
@@ -1016,11 +1036,16 @@ class SidebarApp:
             max_rows = min(len(df_visual), 100)
             print(f"Preenchendo {max_rows} linhas de dados...")
             for row_idx in range(max_rows):
+                table_frame.grid_rowconfigure(row_idx + 1, minsize=34)
                 for col_idx, column in enumerate(display_columns):
                     value = df_visual[column].iloc[row_idx]
                     # Converter para string e limitar tamanho
                     cell_text = str(value) if pd.notna(value) else ""
-                    if len(cell_text) > 50 and column != "DT. PREVISÃO ENTREGA":
+                    if column == "Tipo - OS" and len(cell_text) > 20:
+                        cell_text = cell_text[:17] + "..."
+                    elif column == "Veículo" and len(cell_text) > 50:
+                        cell_text = cell_text[:47] + "..."
+                    elif len(cell_text) > 50 and column != "Prev. de Entrega":
                         cell_text = cell_text[:47] + "..."
                     
                     # Frame para criar borda da célula
@@ -1028,17 +1053,21 @@ class SidebarApp:
                         table_frame,
                         fg_color="gray20",
                         border_width=1,
-                        border_color="gray30"
+                        border_color="gray30",
+                        width=col_widths[col_idx],
+                        height=34
                     )
-                    cell_frame.grid(row=row_idx + 1, column=col_idx, padx=1, pady=1, sticky="ew")
+                    cell_frame.grid(row=row_idx + 1, column=col_idx, padx=1, pady=1, sticky="nsew")
+                    cell_frame.grid_propagate(False)
                     
                     # Se for a coluna de data, criar um campo de entrada editável
-                    if column == "DT. PREVISÃO ENTREGA":
+                    if column == "Prev. de Entrega":
                         entry = ctk.CTkEntry(
                             cell_frame,
                             font=ctk.CTkFont(size=11),
-                            width=150,
-                            height=28
+                            width=max(60, col_widths[col_idx] - 10),
+                            height=28,
+                            justify="center"
                         )
                         entry.insert(0, cell_text)
                         entry.pack(padx=4, pady=2, fill="both", expand=True)
@@ -1051,8 +1080,7 @@ class SidebarApp:
                             cell_frame, 
                             text=cell_text,
                             font=ctk.CTkFont(size=11),
-                            anchor="w",
-                            width=80 if column in ["Issue", "Status"] else 150
+                            anchor="w"
                         )
                         cell.pack(padx=8, pady=4, fill="both", expand=True)
             

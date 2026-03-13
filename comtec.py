@@ -88,7 +88,11 @@ while True:
         print(f"DEBUG - Issue {key} - situacao final: {situacao}")
 
         # Filtrar apenas situações desejadas
-        situacoes_validas = ["⚪️RECEBIDO ENCAMINHADO", "🟢RECEBIDO LIBERADO"]
+        situacoes_validas = [
+            "⚪️RECEBIDO ENCAMINHADO",
+            "🟢RECEBIDO LIBERADO",
+            "⚫Aguardando entrada",
+        ]
         if situacao not in situacoes_validas:
             continue
 
