@@ -30,6 +30,26 @@ headers = {
     "Accept": "application/json"
 }
 
+# Criar diretórios de saída se não existirem
+jira_cards_dir = os.path.join("src", "temp", "jira_cards")
+relatorios_dir = os.path.join(jira_cards_dir, "relatorios")
+logs_dir = os.path.join(jira_cards_dir, "logs")
+os.makedirs(relatorios_dir, exist_ok=True)
+os.makedirs(logs_dir, exist_ok=True)
+
+# Criar arquivo de log com timestamp
+log_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+log_file_path = os.path.join(logs_dir, f"jira_cards_{log_timestamp}.log")
+log_file = open(log_file_path, "w", encoding="utf-8")
+
+# Escrever cabeçalho do log
+log_file.write(f"{'='*60}\n")
+log_file.write(f"EXPORTAÇÃO DE CARTÕES JIRA - INICIADO\n")
+log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+log_file.write(f"{'='*60}\n\n")
+log_file.write(f"📊 Filtro JQL aplicado:\n{jql}\n\n")
+log_file.write(f"{'='*60}\n\n")
+
 next_page = None
 all_rows = []
 all_links = []  # Para guardar os links
@@ -122,27 +142,29 @@ while True:
         })
         all_links.append(link)
 
-    print("Cartões coletados:", len(all_rows))
+    num_collected = len(all_rows)
+    print("Cartões coletados:", num_collected)
+    log_file.write(f"📄 Página processada: {num_collected} cartões coletados\n")
 
     if data.get("isLast"):
         break
 
     next_page = data.get("nextPageToken")
 
-print("Total de cartões:", len(all_rows))
+total_cards = len(all_rows)
+print("Total de cartões:", total_cards)
+log_file.write(f"\n✅ Total de cartões coletados: {total_cards}\n\n")
+log_file.write(f"{'='*60}\n\n")
 
 # Criar dataframe
 df = pd.DataFrame(all_rows)
 
-# Criar diretório de saída se não existir
-output_dir = os.path.join("src", "temp", "jira_cards")
-os.makedirs(output_dir, exist_ok=True)
-
 # Gerar Excel com data e hora no nome do arquivo
 # Obs.: no Windows não é permitido ':' em nomes de arquivo, por isso usamos '.' entre hora e minuto.
 timestamp = datetime.now().strftime("%d.%m.%Y %H.%M")
-filename = os.path.join(output_dir, f"jira_cards {timestamp}.xlsx")
+filename = os.path.join(relatorios_dir, f"jira_cards {timestamp}.xlsx")
 df.to_excel(filename, index=False)
+log_file.write(f"📝 Criando arquivo Excel...\n")
 
 # Adicionar hyperlinks na coluna Chave
 wb = load_workbook(filename)
@@ -155,5 +177,18 @@ for idx, link in enumerate(all_links, start=2):
     cell.style = "Hyperlink"
 
 wb.save(filename)
+log_file.write(f"🔗 Hyperlinks adicionados na coluna 'Chave'\n")
+log_file.write(f"💾 Arquivo salvo: {filename}\n\n")
+
+# Escrever resumo no log
+log_file.write(f"{'='*60}\n")
+log_file.write(f"CONCLUÍDO - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+log_file.write(f"{'='*60}\n")
+log_file.write(f"✅ Total de cartões exportados: {total_cards}\n")
+log_file.write(f"📁 Arquivo Excel: {os.path.abspath(filename)}\n")
+log_file.write(f"📄 Log salvo em: {os.path.abspath(log_file_path)}\n")
+log_file.write(f"{'='*60}\n")
+log_file.close()
 
 print(f"Arquivo {filename} criado com sucesso!")
+print(f"Log salvo em: {log_file_path}")
