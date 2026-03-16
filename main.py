@@ -376,10 +376,11 @@ class SidebarApp:
             "Gerar Relatório",
             "Adicionar Datas",
             "Reprogramar CONTEC",
+            "Download OS",
             "Imprimir OS"
         ]
         
-        # Criar botoes em grade 2x2 (2 colunas, 2 linhas)
+        # Criar botoes em grade 3x2 (2 colunas, até 3 linhas)
         for i, btn_name in enumerate(button_names):
             row = i // 2
             col = i % 2
@@ -1557,9 +1558,9 @@ class SidebarApp:
                 script_args=["--ids", ",".join(card_ids_to_update), "--date", target_date]
             )
 
-        elif routine_name == "Imprimir OS":
+        elif routine_name == "Download OS":
             print("\n" + "="*60)
-            print(">>> BOTÃO IMPRIMIR OS CLICADO <<<")
+            print(">>> BOTÃO DOWNLOAD OS CLICADO <<<")
             print("="*60)
             # Solicitar IDs do card e executar script de download somente para os itens informados
             card_ids_to_print = self.request_card_ids_to_print()
@@ -1575,8 +1576,28 @@ class SidebarApp:
             
             self.run_script_with_loading(
                 script_path,
-                "Imprimir OS",
+                "Download OS",
                 script_args=["--ids", ",".join(card_ids_to_print)]
+            )
+        
+        elif routine_name == "Imprimir OS":
+            print("\n" + "="*60)
+            print(">>> BOTÃO IMPRIMIR OS CLICADO <<<")
+            print("="*60)
+            # Executar script de impressão em massa de PDFs
+            script_path = os.path.join("scripts", "print_ops.py")
+            print(f"Caminho do script: {script_path}")
+            print(f"Script existe? {os.path.exists(script_path)}")
+            
+            if not os.path.exists(script_path):
+                print("Script print_ops.py não encontrado.")
+                return
+            
+            # Executar o script print_ops.py que abrirá sua própria GUI
+            self.run_script_with_loading(
+                script_path,
+                "Imprimir OS",
+                script_args=["--gui"]
             )
         
         else:
@@ -1585,6 +1606,7 @@ class SidebarApp:
             print("  - Gerar Relatório")
             print("  - Adicionar Datas")
             print("  - Reprogramar CONTEC")
+            print("  - Download OS")
             print("  - Imprimir OS")
         
         # Adicione aqui a lógica específica para outras rotinas
