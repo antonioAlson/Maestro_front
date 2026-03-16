@@ -20,8 +20,9 @@ import re
 import tkinter as tk
 from datetime import datetime
 
-# Importar módulo update_dates
+# Importar módulos
 from pcp.data_update import update_dates, add_dates
+from projetos.mirror_create import processar_cards
 
 
 class SidebarApp:
@@ -394,7 +395,8 @@ class SidebarApp:
             font=ctk.CTkFont(size=13, weight="bold"),
             corner_radius=8,
             fg_color="#1f6aa5",
-            hover_color="#2f7dc2"
+            hover_color="#2f7dc2",
+            command=self.criar_espelhos_action
         )
         btn.grid(row=0, column=0, padx=6, pady=6, sticky="ew")
         
@@ -1617,6 +1619,18 @@ class SidebarApp:
         popup.protocol("WM_DELETE_WINDOW", on_cancel)
         self.root.wait_window(popup)
         return result["card_ids"]
+
+    def criar_espelhos_action(self):
+        """Solicita IDs dos cards para criar espelhos e processa os dados do Jira."""
+        card_ids = self.request_card_ids_to_print()
+        if card_ids:
+            # Processar os cards usando o script mirror_create
+            resultados = processar_cards(card_ids)
+            
+            if resultados:
+                print(f"\n✅ {len(resultados)} espelhos processados com sucesso!\n")
+            else:
+                print("\n⚠️  Nenhum espelho foi processado.\n")
 
     def request_target_date(self):
         """Solicita a data de previsão para atualização dos cards."""
