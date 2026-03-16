@@ -15,8 +15,10 @@ import requests
 from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
 import os
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, InlineImage
 from datetime import datetime
+from docx.shared import Mm
+import qrcode
 
 load_dotenv()
 
@@ -27,9 +29,11 @@ API_TOKEN = os.getenv("API_TOKEN")
 # Caminhos dos arquivos
 TEMPLATE_PATH = os.path.join("scripts", "projetos", "default.docx")
 OUTPUT_DIR = os.path.join("src", "temp", "espelhos")
+QRCODE_TEMP_DIR = os.path.join("src", "temp", "qrcodes")
 
-# Criar diretório de saída se não existir
+# Criar diretórios de saída se não existirem
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(QRCODE_TEMP_DIR, exist_ok=True)
 
 
 def buscar_dados_card(card_id):
@@ -87,6 +91,50 @@ def buscar_dados_card(card_id):
         return None
 
 
+def gerar_qrcode(card_id, card_data):
+    """
+    Gera um QR code com as informações do card.
+    
+    Args:
+        card_id (str): ID do card
+        card_data (dict): Dicionário com os dados do card
+    
+    Returns:
+        str: Caminho do arquivo QR code gerado
+    """
+    try:
+        # Montar as informações para o QR code (apenas valores, sem labels)
+        qr_data = f"""{card_data.get('Veiculo - Marca/Modelo', '')}
+{card_data.get('Configurações Teto', '')}
+{card_data.get('Ano Modelo', '')}
+{card_data.get('Nº do Projeto', '')}
+{card_data.get('PEDIDO CARBON', '')}"""
+        
+        # Criar o QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        
+        # Gerar a imagem
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Salvar a imagem temporariamente
+        qr_filename = f"qr_{card_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        qr_path = os.path.join(QRCODE_TEMP_DIR, qr_filename)
+        img.save(qr_path)
+        
+        return qr_path
+        
+    except Exception as e:
+        print(f"   ⚠️  Erro ao gerar QR code: {str(e)}")
+        return None
+
+
 def gerar_espelho(card_id, card_data):
     """
     Gera um documento Word a partir do template default.docx.
@@ -114,6 +162,10 @@ def gerar_espelho(card_id, card_data):
         # Obter data atual formatada
         data_atual = datetime.now().strftime("%d/%m/%Y")
         
+        # Gerar QR code com as informações do card
+        print(f"   📱 Gerando QR code...")
+        qr_path = gerar_qrcode(card_id, card_data)
+        
         # Preparar o contexto com os placeholders
         context = {
             'MODELO_VEICULO': card_data.get('Veiculo - Marca/Modelo', ''),
@@ -125,26 +177,46 @@ def gerar_espelho(card_id, card_data):
             'NUMERO_ORDEM': card_data.get('PEDIDO CARBON', '')
         }
         
+        # Adicionar QR code como imagem inline ao contexto (tamanho 35mm)
+        if qr_path and os.path.exists(qr_path):
+            qr_image = InlineImage(doc, qr_path, width=Mm(35))
+            context['QR_CODE'] = qr_image
+            print(f"   ✅ QR code adicionado ao documento (35mm)")
+        else:
+            context['QR_CODE'] = ''
+            print(f"   ⚠️  QR code não pôde ser gerado")
+        
         # Debug: mostrar os valores que serão substituídos
         print(f"   🔍 Valores para substituição:")
         for key, value in context.items():
-            print(f"      {{ {key} }} = '{value}'")
+            if key != 'QR_CODE':  # Não mostrar objeto de imagem
+                print(f"      {{ {key} }} = '{value}'")
         
         # Renderizar o documento com os dados
         doc.render(context)
         
-        # Gerar nome do arquivo de saída
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"Espelho_{card_id}_{timestamp}.docx"
+        # Gerar nome do arquivo de saída usando número do pedido, data e hora
+        numero_pedido = card_data.get('PEDIDO CARBON', card_id)
+        timestamp = datetime.now().strftime("%d.%m.%Y %H-%M")
+        output_filename = f"{numero_pedido} {timestamp}.docx"
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         
         # Salvar o documento
         doc.save(output_path)
         
+        # Limpar arquivo QR code temporário
+        if qr_path and os.path.exists(qr_path):
+            try:
+                os.remove(qr_path)
+            except:
+                pass  # Ignorar erros ao remover arquivo temporário
+        
         return output_path
         
     except Exception as e:
         print(f"❌ Erro ao gerar espelho para {card_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -167,8 +239,9 @@ def processar_cards(card_ids):
     print("="*70)
     print(f"Total de cards a processar: {len(card_ids)}")
     print(f"\n⚠️  IMPORTANTE: O arquivo default.docx deve conter os placeholders:")
-    print(f"   {{ MODELO_VEICULO }}, {{ TIPO_TETO }}, {{ ANO_VEICULO }},")
-    print(f"   {{ NUMERO_PROJETO }}, {{ DATA_PROJETO }}, {{ QUANTIDADE_PECAS }}, {{ NUMERO_ORDEM }}")
+    print(f"   Textos: {{ MODELO_VEICULO }}, {{ TIPO_TETO }}, {{ ANO_VEICULO }},")
+    print(f"           {{ NUMERO_PROJETO }}, {{ DATA_PROJETO }}, {{ QUANTIDADE_PECAS }}, {{ NUMERO_ORDEM }}")
+    print(f"   QR Code: {{ QR_CODE }} (posicione onde quiser que apareça o QR code)")
     print()
     
     resultados = []
@@ -214,9 +287,3 @@ def processar_cards(card_ids):
     print("="*70 + "\n")
     
     return resultados
-
-
-if __name__ == "__main__":
-    # Teste com IDs de exemplo
-    test_ids = ["TENSYLON-819", "TENSYLON-817"]
-    processar_cards(test_ids)
