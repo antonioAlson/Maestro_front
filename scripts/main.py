@@ -18,6 +18,7 @@ import subprocess
 import threading
 import re
 import tkinter as tk
+import shutil
 from datetime import datetime
 
 # Importar módulos
@@ -387,8 +388,8 @@ class SidebarApp:
         rotinas_buttons_container.grid_columnconfigure(0, weight=1, uniform="proj_btn_col")
         rotinas_buttons_container.grid_columnconfigure(1, weight=1, uniform="proj_btn_col")
         
-        # Botão único - Criar Espelhos
-        btn = ctk.CTkButton(
+        # Botão - Criar Espelhos
+        btn_criar = ctk.CTkButton(
             rotinas_buttons_container,
             text="Criar Espelhos",
             height=42,
@@ -398,7 +399,20 @@ class SidebarApp:
             hover_color="#2f7dc2",
             command=self.criar_espelhos_action
         )
-        btn.grid(row=0, column=0, padx=6, pady=6, sticky="ew")
+        btn_criar.grid(row=0, column=0, padx=6, pady=6, sticky="ew")
+        
+        # Botão - Montar OPs
+        btn_montar = ctk.CTkButton(
+            rotinas_buttons_container,
+            text="Montar OPs",
+            height=42,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            corner_radius=8,
+            fg_color="#1f6aa5",
+            hover_color="#2f7dc2",
+            command=self.montar_ops_action
+        )
+        btn_montar.grid(row=0, column=1, padx=6, pady=6, sticky="ew")
         
         # ========== SEÇÃO RELATÓRIOS ==========
         relatorios_frame = ctk.CTkFrame(content_container, corner_radius=12, fg_color="#323232")
@@ -435,7 +449,8 @@ class SidebarApp:
                 font=ctk.CTkFont(size=13, weight="bold"),
                 corner_radius=8,
                 fg_color="#2a9d2a",
-                hover_color="#238a23"
+                hover_color="#238a23",
+                command=lambda name=btn_name: self.pcp_routine_action(name)
             )
             btn.grid(row=row, column=col, padx=6, pady=6, sticky="ew")
     
@@ -686,8 +701,12 @@ class SidebarApp:
         """Mostra mensagem de sucesso no popup"""
         print(f"show_success_message chamado: script_name={script_name}, file_path={file_path}")
         if hasattr(self, 'loading_popup') and self.loading_popup:
-            # Definir dimensões do popup baseado na presença de arquivo Excel
-            if file_path and file_path.endswith('.xlsx') and os.path.exists(file_path):
+            # Verificar se é arquivo Excel ou diretório
+            is_excel = file_path and file_path.endswith('.xlsx') and os.path.exists(file_path)
+            is_directory = file_path and os.path.isdir(file_path)
+            
+            # Definir dimensões do popup baseado na presença de arquivo/diretório
+            if is_excel or is_directory:
                 popup_width = 380
                 popup_height = 240
             else:
@@ -723,7 +742,7 @@ class SidebarApp:
             # Detalhes
             detail_label = ctk.CTkLabel(
                 self.loading_popup,
-                text=f"{script_name} executado com sucesso.",
+                text=f"{script_name}",
                 font=ctk.CTkFont(size=13)
             )
             detail_label.pack(pady=5)
@@ -732,8 +751,8 @@ class SidebarApp:
             buttons_frame = ctk.CTkFrame(self.loading_popup, fg_color="transparent")
             buttons_frame.pack(pady=20)
             
-            # Botão abrir Excel (se houver caminho e for arquivo Excel)
-            if file_path and file_path.endswith('.xlsx') and os.path.exists(file_path):
+            # Botão para abrir Excel ou pasta
+            if is_excel:
                 print(f"Criando botão 'Abrir Excel' para: {file_path}")
                 view_btn = ctk.CTkButton(
                     buttons_frame,
@@ -744,8 +763,19 @@ class SidebarApp:
                     font=ctk.CTkFont(size=13, weight="bold")
                 )
                 view_btn.pack(side="left", padx=5)
+            elif is_directory:
+                print(f"Criando botão 'Abrir Pasta' para: {file_path}")
+                view_btn = ctk.CTkButton(
+                    buttons_frame,
+                    text="Abrir Pasta",
+                    command=lambda: [self.open_file(file_path), self.close_loading_popup()],
+                    width=130,
+                    height=35,
+                    font=ctk.CTkFont(size=13, weight="bold")
+                )
+                view_btn.pack(side="left", padx=5)
             else:
-                print(f"Botão 'Abrir Excel' não criado. file_path={file_path}, existe={os.path.exists(file_path) if file_path else False}")
+                print(f"Botão de abertura não criado. file_path={file_path}")
             
             # Botão fechar
             close_btn = ctk.CTkButton(
@@ -1623,14 +1653,76 @@ class SidebarApp:
     def criar_espelhos_action(self):
         """Solicita IDs dos cards para criar espelhos e processa os dados do Jira."""
         card_ids = self.request_card_ids_to_print()
-        if card_ids:
-            # Processar os cards usando o script mirror_create
-            resultados = processar_cards(card_ids)
-            
-            if resultados:
-                print(f"\n✅ {len(resultados)} espelhos processados com sucesso!\n")
-            else:
-                print("\n⚠️  Nenhum espelho foi processado.\n")
+        if not card_ids:
+            return
+        
+        self.script_running = True
+        
+        def simulate_progress():
+            """Simula progresso enquanto os espelhos estão sendo gerados"""
+            progress = 0
+            while self.script_running and progress < 0.95:
+                progress += 0.08
+                self.root.after(0, lambda p=progress: self.update_progress(p))
+                threading.Event().wait(0.2)
+        
+        def execute():
+            try:
+                # Limpar pasta de arquivos de espelhos antes de gerar novos
+                espelhos_arquivos_dir = os.path.join("src", "temp", "espelhos", "arquivos")
+                if os.path.exists(espelhos_arquivos_dir):
+                    print(f"\n🗑️  Limpando pasta de espelhos...")
+                    for filename in os.listdir(espelhos_arquivos_dir):
+                        file_path = os.path.join(espelhos_arquivos_dir, filename)
+                        try:
+                            if os.path.isfile(file_path):
+                                os.unlink(file_path)
+                                print(f"   Removido: {filename}")
+                        except Exception as e:
+                            print(f"   ⚠️  Erro ao remover {filename}: {e}")
+                    print(f"✅ Pasta limpa!\n")
+                
+                # Processar os cards usando o script mirror_create
+                resultados = processar_cards(card_ids)
+                
+                # Finalizar o progresso
+                self.script_running = False
+                self.root.after(0, lambda: self.update_progress(1.0))
+                
+                # Mostrar resultado
+                if resultados:
+                    print(f"\n✅ {len(resultados)} espelhos processados com sucesso!\n")
+                    # Mostrar mensagem de sucesso (não fechar popup antes, o show_success_message transforma o popup)
+                    self.root.after(300, lambda: self.show_success_message(
+                        f"{len(resultados)} espelho(s) gerado(s) com sucesso!",
+                        os.path.join("src", "temp", "espelhos", "arquivos")
+                    ))
+                else:
+                    self.root.after(200, lambda: self.close_loading_popup())
+                    print("\n⚠️  Nenhum espelho foi processado.\n")
+                    
+            except Exception as e:
+                self.script_running = False
+                self.root.after(0, lambda: self.close_loading_popup())
+                print(f"\n❌ Erro ao gerar espelhos: {str(e)}\n")
+                import traceback
+                traceback.print_exc()
+        
+        # Mostrar popup e iniciar execução em thread separada
+        self.show_loading_popup(f"Gerando {len(card_ids)} espelho(s)...")
+        
+        # Iniciar threads
+        exec_thread = threading.Thread(target=execute, daemon=True)
+        exec_thread.start()
+        
+        progress_thread = threading.Thread(target=simulate_progress, daemon=True)
+        progress_thread.start()
+
+    def montar_ops_action(self):
+        """Ação para montar OPs."""
+        print("\n" + "="*50)
+        print("🔧 MONTAR OPs - Funcionalidade em desenvolvimento")
+        print("="*50 + "\n")
 
     def request_target_date(self):
         """Solicita a data de previsão para atualização dos cards."""

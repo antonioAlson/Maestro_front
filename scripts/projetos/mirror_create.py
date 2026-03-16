@@ -28,11 +28,14 @@ API_TOKEN = os.getenv("API_TOKEN")
 
 # Caminhos dos arquivos
 TEMPLATE_PATH = os.path.join("scripts", "projetos", "default.docx")
-OUTPUT_DIR = os.path.join("src", "temp", "espelhos")
+ESPELHOS_BASE_DIR = os.path.join("src", "temp", "espelhos")
+OUTPUT_DIR = os.path.join(ESPELHOS_BASE_DIR, "arquivos")
+LOGS_DIR = os.path.join(ESPELHOS_BASE_DIR, "logs")
 QRCODE_TEMP_DIR = os.path.join("src", "temp", "qrcodes")
 
 # Criar diretórios de saída se não existirem
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(QRCODE_TEMP_DIR, exist_ok=True)
 
 
@@ -234,56 +237,93 @@ def processar_cards(card_ids):
         print("⚠️  Nenhum ID de card foi informado.")
         return []
     
-    print("\n" + "="*70)
-    print("📋 CRIAR ESPELHOS - Consultando cards no Jira e gerando documentos")
-    print("="*70)
-    print(f"Total de cards a processar: {len(card_ids)}")
-    print(f"\n⚠️  IMPORTANTE: O arquivo default.docx deve conter os placeholders:")
-    print(f"   Textos: {{ MODELO_VEICULO }}, {{ TIPO_TETO }}, {{ ANO_VEICULO }},")
-    print(f"           {{ NUMERO_PROJETO }}, {{ DATA_PROJETO }}, {{ QUANTIDADE_PECAS }}, {{ NUMERO_ORDEM }}")
-    print(f"   QR Code: {{ QR_CODE }} (posicione onde quiser que apareça o QR code)")
-    print()
+    # Criar arquivo de log com timestamp
+    log_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file_path = os.path.join(LOGS_DIR, f"espelhos_{log_timestamp}.log")
     
-    resultados = []
-    espelhos_gerados = 0
-    
-    for idx, card_id in enumerate(card_ids, 1):
-        print(f"[{idx}/{len(card_ids)}] Buscando dados de {card_id}...")
+    with open(log_file_path, "w", encoding="utf-8") as log_file:
+        # Escrever cabeçalho do log
+        log_file.write(f"{'='*70}\n")
+        log_file.write(f"GERAÇÃO DE ESPELHOS - INICIADO\n")
+        log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log_file.write(f"{'='*70}\n\n")
+        log_file.write(f"Total de cards a processar: {len(card_ids)}\n")
+        log_file.write(f"IDs: {', '.join(card_ids)}\n\n")
+        log_file.write(f"{'='*70}\n\n")
         
-        card_data = buscar_dados_card(card_id)
+        print("\n" + "="*70)
+        print("📋 CRIAR ESPELHOS - Consultando cards no Jira e gerando documentos")
+        print("="*70)
+        print(f"Total de cards a processar: {len(card_ids)}")
+        print(f"📝 Log: {log_file_path}")
+        print(f"\n⚠️  IMPORTANTE: O arquivo default.docx deve conter os placeholders:")
+        print(f"   Textos: {{ MODELO_VEICULO }}, {{ TIPO_TETO }}, {{ ANO_VEICULO }},")
+        print(f"           {{ NUMERO_PROJETO }}, {{ DATA_PROJETO }}, {{ QUANTIDADE_PECAS }}, {{ NUMERO_ORDEM }}")
+        print(f"   QR Code: {{ QR_CODE }} (posicione onde quiser que apareça o QR code)")
+        print()
         
-        if card_data:
-            print(f"   ✅ Dados extraídos com sucesso!")
+        resultados = []
+        espelhos_gerados = 0
+        
+        for idx, card_id in enumerate(card_ids, 1):
+            log_file.write(f"[{idx}/{len(card_ids)}] Processando {card_id}...\n")
+            print(f"[{idx}/{len(card_ids)}] Buscando dados de {card_id}...")
             
-            # Imprimir os dados extraídos
-            print(f"   📌 Veiculo - Marca/Modelo: {card_data['Veiculo - Marca/Modelo']}")
-            print(f"   📌 Configurações Teto: {card_data['Configurações Teto']}")
-            print(f"   📌 Ano Modelo: {card_data['Ano Modelo']}")
-            print(f"   📌 Nº do Projeto: {card_data['Nº do Projeto']}")
-            print(f"   📌 PEDIDO CARBON: {card_data['PEDIDO CARBON']}")
+            card_data = buscar_dados_card(card_id)
             
-            # Gerar o espelho em Word
-            print(f"   📄 Gerando espelho...")
-            output_path = gerar_espelho(card_id, card_data)
-            
-            if output_path:
-                print(f"   ✅ Espelho gerado: {output_path}")
-                card_data['arquivo_espelho'] = output_path
-                espelhos_gerados += 1
+            if card_data:
+                print(f"   ✅ Dados extraídos com sucesso!")
+                log_file.write(f"   ✅ Dados extraídos\n")
+                
+                # Imprimir os dados extraídos
+                print(f"   📌 Veiculo - Marca/Modelo: {card_data['Veiculo - Marca/Modelo']}")
+                print(f"   📌 Configurações Teto: {card_data['Configurações Teto']}")
+                print(f"   📌 Ano Modelo: {card_data['Ano Modelo']}")
+                print(f"   📌 Nº do Projeto: {card_data['Nº do Projeto']}")
+                print(f"   📌 PEDIDO CARBON: {card_data['PEDIDO CARBON']}")
+                
+                log_file.write(f"   Veiculo: {card_data['Veiculo - Marca/Modelo']}\n")
+                log_file.write(f"   Teto: {card_data['Configurações Teto']}\n")
+                log_file.write(f"   Ano: {card_data['Ano Modelo']}\n")
+                log_file.write(f"   Projeto: {card_data['Nº do Projeto']}\n")
+                log_file.write(f"   PEDIDO: {card_data['PEDIDO CARBON']}\n")
+                
+                # Gerar o espelho em Word
+                print(f"   📄 Gerando espelho...")
+                output_path = gerar_espelho(card_id, card_data)
+                
+                if output_path:
+                    print(f"   ✅ Espelho gerado: {output_path}")
+                    log_file.write(f"   ✅ Espelho gerado: {os.path.basename(output_path)}\n")
+                    card_data['arquivo_espelho'] = output_path
+                    espelhos_gerados += 1
+                else:
+                    print(f"   ⚠️  Não foi possível gerar o espelho.")
+                    log_file.write(f"   ⚠️  Erro ao gerar espelho\n")
+                    card_data['arquivo_espelho'] = None
+                
+                resultados.append(card_data)
+                print()
+                log_file.write("\n")
             else:
-                print(f"   ⚠️  Não foi possível gerar o espelho.")
-                card_data['arquivo_espelho'] = None
-            
-            resultados.append(card_data)
-            print()
-        else:
-            print(f"   ⚠️  Não foi possível extrair dados deste card.\n")
-    
-    print("="*70)
-    print(f"✅ Processamento concluído!")
-    print(f"   📊 {len(resultados)}/{len(card_ids)} cards processados com sucesso")
-    print(f"   📄 {espelhos_gerados} espelhos gerados")
-    print(f"   📁 Arquivos salvos em: {OUTPUT_DIR}")
-    print("="*70 + "\n")
+                print(f"   ⚠️  Não foi possível extrair dados deste card.\n")
+                log_file.write(f"   ❌ Falha ao extrair dados\n\n")
+        
+        # Finalizar log
+        log_file.write(f"{'='*70}\n")
+        log_file.write(f"✅ PROCESSAMENTO CONCLUÍDO\n")
+        log_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log_file.write(f"{'='*70}\n")
+        log_file.write(f"Cards processados: {len(resultados)}/{len(card_ids)}\n")
+        log_file.write(f"Espelhos gerados: {espelhos_gerados}\n")
+        log_file.write(f"Pasta de saída: {OUTPUT_DIR}\n")
+        
+        print("="*70)
+        print(f"✅ Processamento concluído!")
+        print(f"   📊 {len(resultados)}/{len(card_ids)} cards processados com sucesso")
+        print(f"   📄 {espelhos_gerados} espelhos gerados")
+        print(f"   📁 Arquivos salvos em: {OUTPUT_DIR}")
+        print(f"   📝 Log salvo em: {log_file_path}")
+        print("="*70 + "\n")
     
     return resultados
