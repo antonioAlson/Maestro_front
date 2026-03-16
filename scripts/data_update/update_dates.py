@@ -10,10 +10,15 @@ from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 
 
-# Configurar saida UTF-8 no Windows
+# Configurar saida UTF-8 no Windows (apenas se ainda não foi configurado)
 if sys.platform == "win32":
-	sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-	sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+	try:
+		if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != "utf-8":
+			sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+		if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != "utf-8":
+			sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+	except Exception:
+		pass  # Já configurado ou não é necessário
 
 
 def parse_args():

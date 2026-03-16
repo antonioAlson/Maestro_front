@@ -1,22 +1,33 @@
+import sys
+import io
+
+# Configurar saída UTF-8 para Windows (apenas se ainda não foi configurado)
+if sys.platform == 'win32':
+    try:
+        if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != 'utf-8':
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != 'utf-8':
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Já configurado ou não é necessário
+
 import customtkinter as ctk
 from PIL import Image
 import os
 import subprocess
 import threading
 import re
-import sys
 import tkinter as tk
 from datetime import datetime
 
 # Importar módulo update_dates
-from data_update import update_dates
+from data_update import update_dates, add_dates
 
 
 class SidebarApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Maestro")
-        self.root.geometry("1000x500")
         self.set_window_icon()
         # Configurar tema
         ctk.set_appearance_mode("dark")  # "light" ou "dark"
@@ -76,6 +87,9 @@ class SidebarApp:
     
     def center_window(self, width, height):
         """Centraliza a janela na tela"""
+        # Atualizar para garantir que as dimensões estejam corretas
+        self.root.update_idletasks()
+        
         # Obter dimensões da tela
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
@@ -84,7 +98,7 @@ class SidebarApp:
         x = (screen_width - width) // 2
         y = (screen_height - height) // 2
         
-        # Definir geometria com posição
+        # Definir geometria com posição centralizada
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def load_images(self):
@@ -357,9 +371,14 @@ class SidebarApp:
         content_container = ctk.CTkFrame(card, fg_color="transparent")
         content_container.pack(fill="both", expand=True, padx=26, pady=(0, 22))
         
+        # Configurar grid para alinhamento vertical das seções
+        content_container.grid_rowconfigure(0, weight=1)
+        content_container.grid_rowconfigure(1, weight=1)
+        content_container.grid_columnconfigure(0, weight=1)
+        
         # ========== SEÇÃO ROTINAS PCP ==========
         rotinas_frame = ctk.CTkFrame(content_container, corner_radius=12, fg_color="#323232")
-        rotinas_frame.pack(fill="x", pady=(0, 12))
+        rotinas_frame.grid(row=0, column=0, sticky="new", pady=(0, 12))
 
         rotinas_title = ctk.CTkLabel(
             rotinas_frame,
@@ -373,15 +392,15 @@ class SidebarApp:
         rotinas_buttons_container.pack(fill="x", padx=14, pady=(0, 14))
 
         # Grid 2 colunas para rotinas
-        rotinas_buttons_container.grid_columnconfigure(0, weight=1, uniform="rotinas_col")
-        rotinas_buttons_container.grid_columnconfigure(1, weight=1, uniform="rotinas_col")
+        rotinas_buttons_container.grid_columnconfigure(0, weight=1, uniform="pcp_btn_col")
+        rotinas_buttons_container.grid_columnconfigure(1, weight=1, uniform="pcp_btn_col")
         
         # Definir botões de rotinas
         rotinas_buttons = [
-            "Adicionar Datas",
-            "Reprogramar OS",
-            "Download OS",
-            "Imprimir OS"
+            "Salvar OPs",
+            "Imprimir OPs",
+            "Reprogramar OPs",
+            "Adicionar Datas"
         ]
         
         # Criar botões em grade 2x2
@@ -402,7 +421,7 @@ class SidebarApp:
         
         # ========== SEÇÃO RELATÓRIOS ==========
         relatorios_frame = ctk.CTkFrame(content_container, corner_radius=12, fg_color="#323232")
-        relatorios_frame.pack(fill="x", pady=(0, 0))
+        relatorios_frame.grid(row=1, column=0, sticky="new", pady=(0, 0))
 
         relatorios_title = ctk.CTkLabel(
             relatorios_frame,
@@ -416,8 +435,8 @@ class SidebarApp:
         relatorios_buttons_container.pack(fill="x", padx=14, pady=(0, 14))
 
         # Grid 2 colunas para relatórios
-        relatorios_buttons_container.grid_columnconfigure(0, weight=1, uniform="relatorios_col")
-        relatorios_buttons_container.grid_columnconfigure(1, weight=1, uniform="relatorios_col")
+        relatorios_buttons_container.grid_columnconfigure(0, weight=1, uniform="pcp_btn_col")
+        relatorios_buttons_container.grid_columnconfigure(1, weight=1, uniform="pcp_btn_col")
         
         # Definir botões de relatórios
         relatorios_buttons = [
@@ -434,8 +453,8 @@ class SidebarApp:
                 height=42,
                 font=ctk.CTkFont(size=13, weight="bold"),
                 corner_radius=8,
-                fg_color="#1f6aa5",
-                hover_color="#2f7dc2",
+                fg_color="#2a9d2a",
+                hover_color="#238a23",
                 command=lambda name=btn_name: self.pcp_routine_action(name)
             )
             btn.grid(row=row, column=col, padx=6, pady=6, sticky="ew")
@@ -444,14 +463,14 @@ class SidebarApp:
         """Mostra popup de carregamento centralizado"""
         self.loading_popup = ctk.CTkToplevel(self.root)
         self.loading_popup.title("Aguarde")
-        self.loading_popup.geometry("550x240")
         self.loading_popup.resizable(False, False)
         
         # Centralizar baseado na janela principal
         self.loading_popup.transient(self.root)
         self.loading_popup.grab_set()
         
-        # Atualizar para garantir que as dimensões estejam corretas
+        # Atualizar ambas as janelas para garantir que as dimensões estejam corretas
+        self.root.update_idletasks()
         self.loading_popup.update_idletasks()
         
         # Calcular posição central
@@ -561,11 +580,26 @@ class SidebarApp:
         """Mostra mensagem de sucesso no popup"""
         print(f"show_success_message chamado: script_name={script_name}, file_path={file_path}")
         if hasattr(self, 'loading_popup') and self.loading_popup:
-            # Ajustar altura do popup para caber todos os elementos
+            # Definir dimensões do popup baseado na presença de arquivo Excel
             if file_path and file_path.endswith('.xlsx') and os.path.exists(file_path):
-                self.loading_popup.geometry("380x240")  # Maior para acomodar ambos os botões
+                popup_width = 380
+                popup_height = 240
             else:
-                self.loading_popup.geometry("350x220")
+                popup_width = 350
+                popup_height = 220
+            
+            # Recalcular posição centralizada
+            self.root.update_idletasks()
+            root_x = self.root.winfo_x()
+            root_y = self.root.winfo_y()
+            root_width = self.root.winfo_width()
+            root_height = self.root.winfo_height()
+            
+            x = root_x + (root_width - popup_width) // 2
+            y = root_y + (root_height - popup_height) // 2
+            
+            # Aplicar nova geometria centralizada
+            self.loading_popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
             
             # Limpar widgets existentes
             for widget in self.loading_popup.winfo_children():
@@ -1223,7 +1257,7 @@ class SidebarApp:
             try:
                 print("Carregando dados de update em memoria...")
                 # Chamar a função diretamente (não via subprocess)
-                df = update_dates.gerar_update_cards()
+                df = add_dates.gerar_update_cards()
                 print(f"DataFrame com {len(df)} linhas")
             except Exception as e:
                 print(f"Erro ao gerar arquivo: {e}")
@@ -1239,7 +1273,7 @@ class SidebarApp:
                 if df is not None:
                     print(f"Abrindo visualização de dados com DataFrame ({len(df)} linhas)...")
                     self.root.after(200, lambda: self.close_loading_popup())
-                    self.root.after(300, lambda: update_dates.abrir_janela_visualizacao(self, df=df))
+                    self.root.after(300, lambda: add_dates.abrir_janela_visualizacao(self, df=df))
                 else:
                     print("Erro ao gerar dados")
                     self.root.after(200, lambda: self.close_loading_popup())
@@ -1343,11 +1377,6 @@ class SidebarApp:
                 self.script_running = False
                 self.root.after(0, lambda: self.update_progress(1.0))
                 
-                # Para "Imprimir OS", manter o popup aberto com botão fechar
-                if script_name == "Imprimir OS":
-                    self.root.after(500, lambda: self.add_close_button_to_popup())
-                    return
-                
                 # Se for "Adicionar Datas", abrir diretamente a visualização
                 if script_name == "Adicionar Datas" and output_file:
                     # Verificar se o arquivo foi gerado
@@ -1405,28 +1434,37 @@ class SidebarApp:
         return [value.strip() for value in re.split(r"[,;\s]+", raw_text) if value.strip()]
 
     def request_card_ids_to_print(self):
-        """Solicita os IDs dos cards que devem ser processados no script de impressão."""
+        """Solicita os IDs dos cards que devem ser processados."""
         popup = ctk.CTkToplevel(self.root)
-        popup.title("Imprimir OS")
-        popup.geometry("420x360")
+        popup.title("Informar IDs")
         popup.resizable(False, False)
         popup.transient(self.root)
         popup.grab_set()
 
+        # Atualizar ambas as janelas para garantir dimensões corretas
         self.root.update_idletasks()
+        popup.update_idletasks()
+        
+        # Obter dimensões da janela principal
         root_x = self.root.winfo_x()
         root_y = self.root.winfo_y()
         root_width = self.root.winfo_width()
         root_height = self.root.winfo_height()
+        
+        # Definir dimensões do popup
         popup_width = 420
         popup_height = 360
+        
+        # Calcular posição centralizada
         x = root_x + (root_width - popup_width) // 2
         y = root_y + (root_height - popup_height) // 2
+        
+        # Aplicar geometria com posição centralizada
         popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
 
         label = ctk.CTkLabel(
             popup,
-            text="Cole os IDs dos cards (uma por linha, ou separados por vírgula):",
+            text="Cole os IDs dos cards:",
             font=ctk.CTkFont(size=13, weight="bold")
         )
         label.pack(anchor="w", padx=16, pady=(16, 8))
@@ -1444,9 +1482,9 @@ class SidebarApp:
             raw_text = textbox.get("1.0", "end").strip()
             card_ids = self.parse_card_ids_input(raw_text)
             if card_ids:
-                print("IDs de card informados para impressão:")
+                print("IDs de card informados:")
                 for card_id in card_ids:
-                    print(card_id)
+                    print(f"  - {card_id}")
                 result["card_ids"] = card_ids
             popup.destroy()
 
@@ -1480,20 +1518,29 @@ class SidebarApp:
         """Solicita a data de previsão para atualização dos cards."""
         popup = ctk.CTkToplevel(self.root)
         popup.title("Reprogramar Datas")
-        popup.geometry("420x190")
         popup.resizable(False, False)
         popup.transient(self.root)
         popup.grab_set()
 
+        # Atualizar ambas as janelas para garantir dimensões corretas
         self.root.update_idletasks()
+        popup.update_idletasks()
+        
+        # Obter dimensões da janela principal
         root_x = self.root.winfo_x()
         root_y = self.root.winfo_y()
         root_width = self.root.winfo_width()
         root_height = self.root.winfo_height()
+        
+        # Definir dimensões do popup
         popup_width = 420
         popup_height = 190
+        
+        # Calcular posição centralizada
         x = root_x + (root_width - popup_width) // 2
         y = root_y + (root_height - popup_height) // 2
+        
+        # Aplicar geometria com posição centralizada
         popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
 
         label = ctk.CTkLabel(
@@ -1573,7 +1620,7 @@ class SidebarApp:
         print(f"\n>>> pcp_routine_action chamada <<<")
         print(f">>> Rotina selecionada: '{routine_name}'")
         print(f">>> Tipo: {type(routine_name)}")
-        print(f">>> Comparação com 'Imprimir OS': {routine_name == 'Imprimir OS'}")
+        print(f">>> Comparação com 'Imprimir OPs': {routine_name == 'Imprimir OPs'}")
         
         if routine_name == "Gerar Relatório":
             # Executar o script jira_cards.py com popup de carregamento
@@ -1583,23 +1630,23 @@ class SidebarApp:
             self.run_script_with_loading(script_path, "Gerar Relatório", output_file)
         
         elif routine_name == "Adicionar Datas":
-            # Executar função diretamente ao invés de subprocess
+            # Executar função add_dates diretamente
             self.run_update_dates_with_loading()
 
-        elif routine_name == "Reprogramar OS":
+        elif routine_name == "Reprogramar OPs":
             # Solicitar IDs e data antes de executar script de reprogramação CONTEC
             card_ids_to_update = self.request_card_ids_to_print()
-            print(f"IDs retornados para Reprogramar OS: {card_ids_to_update}")
+            print(f"IDs retornados para Reprogramar OPs: {card_ids_to_update}")
 
             if not card_ids_to_update:
-                print("Execução cancelada: nenhum ID informado para Reprogramar OS.")
+                print("Execução cancelada: nenhum ID informado para Reprogramar OPs.")
                 return
 
             target_date = self.request_target_date()
-            print(f"Data retornada para Reprogramar OS: {target_date}")
+            print(f"Data retornada para Reprogramar OPs: {target_date}")
 
             if not target_date:
-                print("Execução cancelada: nenhuma data válida informada para Reprogramar OS.")
+                print("Execução cancelada: nenhuma data válida informada para Reprogramar OPs.")
                 return
 
             script_path = os.path.join("scripts", "data_update", "update_contec.py")
@@ -1611,13 +1658,13 @@ class SidebarApp:
 
             self.run_script_with_loading(
                 script_path,
-                "Reprogramar OS",
+                "Reprogramar OPs",
                 script_args=["--ids", ",".join(card_ids_to_update), "--date", target_date]
             )
 
-        elif routine_name == "Download OS":
+        elif routine_name == "Salvar OPs":
             print("\n" + "="*60)
-            print(">>> BOTÃO DOWNLOAD OS CLICADO <<<")
+            print(">>> BOTÃO Salvar OPs CLICADO <<<")
             print("="*60)
             # Solicitar IDs do card e executar script de download somente para os itens informados
             card_ids_to_print = self.request_card_ids_to_print()
@@ -1633,14 +1680,15 @@ class SidebarApp:
             
             self.run_script_with_loading(
                 script_path,
-                "Download OS",
+                "Salvar OPs",
                 script_args=["--ids", ",".join(card_ids_to_print)]
             )
         
-        elif routine_name == "Imprimir OS":
+        elif routine_name == "Imprimir OPs":
             print("\n" + "="*60)
-            print(">>> BOTÃO IMPRIMIR OS CLICADO <<<")
+            print(">>> BOTÃO Imprimir OPs CLICADO <<<")
             print("="*60)
+            
             # Executar script de impressão em massa de PDFs
             script_path = os.path.join("scripts", "download_ops", "print_ops.py")
             print(f"Caminho do script: {script_path}")
@@ -1650,11 +1698,10 @@ class SidebarApp:
                 print("Script print_ops.py não encontrado.")
                 return
             
-            # Executar o script print_ops.py que abrirá sua própria GUI
+            # Executar o script print_ops.py (que tem sua própria interface)
             self.run_script_with_loading(
                 script_path,
-                "Imprimir OS",
-                script_args=["--gui"]
+                "Imprimir OPs"
             )
         
         else:
@@ -1662,9 +1709,9 @@ class SidebarApp:
             print("Rotinas disponíveis:")
             print("  - Gerar Relatório")
             print("  - Adicionar Datas")
-            print("  - Reprogramar OS")
-            print("  - Download OS")
-            print("  - Imprimir OS")
+            print("  - Reprogramar OPs")
+            print("  - Salvar OPs")
+            print("  - Imprimir OPs")
         
         # Adicione aqui a lógica específica para outras rotinas
     

@@ -17,10 +17,15 @@ except ImportError:
 	win32api = None
 
 
-# Configurar saida UTF-8 no Windows
+# Configurar saida UTF-8 no Windows (apenas se ainda não foi configurado)
 if sys.platform == "win32":
-	sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-	sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+	try:
+		if not isinstance(sys.stdout, io.TextIOWrapper) or sys.stdout.encoding != "utf-8":
+			sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+		if not isinstance(sys.stderr, io.TextIOWrapper) or sys.stderr.encoding != "utf-8":
+			sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+	except Exception:
+		pass  # Já configurado ou não é necessário
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,8 +77,20 @@ def ask_selection_gui(default_pause: float) -> Optional[dict]:
 
 	root = ctk.CTk()
 	root.title("Impressao em Massa - PDFs")
-	root.geometry("800x560")
 	root.resizable(False, False)
+	
+	# Centralizar janela na tela
+	window_width = 800
+	window_height = 560
+	
+	root.update_idletasks()
+	screen_width = root.winfo_screenwidth()
+	screen_height = root.winfo_screenheight()
+	
+	x = (screen_width - window_width) // 2
+	y = (screen_height - window_height) // 2
+	
+	root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
 	main = ctk.CTkFrame(root)
 	main.pack(fill="both", expand=True, padx=20, pady=20)
