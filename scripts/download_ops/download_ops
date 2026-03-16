@@ -62,9 +62,16 @@ args = parse_args()
 raw_values = args.ids or args.ops
 typed_codes = get_typed_codes(raw_values)
 
-# Diretório de logs
-PASTA_LOGS = r".\src\temp\download_os"
+# Diretórios de logs e zips dentro de temp/download_ops
+PASTA_LOGS = r".\src\temp\download_ops\logs"
+PASTA_ZIPS = r".\src\temp\download_ops\zips"
 os.makedirs(PASTA_LOGS, exist_ok=True)
+os.makedirs(PASTA_ZIPS, exist_ok=True)
+
+# Nome do arquivo ZIP no formato: os_prod dd.mm.aaaa hh-mm
+zip_timestamp = datetime.now().strftime("%d.%m.%Y %H-%M")
+zip_filename = f"os_prod {zip_timestamp}.zip"
+zip_path = os.path.join(PASTA_ZIPS, zip_filename)
 
 # Criar arquivo de log com timestamp
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -97,22 +104,15 @@ log_file.write(f"\n🚀 Iniciando downloads...\n")
 log_file.write(f"{'='*60}\n\n")
 sys.stdout.flush()
 
-# Diretório onde os PDFs serão salvos
-PASTA_PDFS = r".\src\downloads_ops\pdfs"
-
-# Limpar pasta de PDFs se existir
-if os.path.exists(PASTA_PDFS):
-    shutil.rmtree(PASTA_PDFS)
-
-# Criar diretório
-os.makedirs(PASTA_PDFS, exist_ok=True)
-
 # Contadores
 pdfs_baixados = 0
 pdfs_erro = 0
 total_bytes = 0
 
 print()  # Linha em branco antes de começar
+
+# Criar ZIP para armazenar os PDFs
+zipf = zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED)
 
 # Processar cada ID informado
 for index, card_id in enumerate(typed_codes, 1):
@@ -158,7 +158,6 @@ for index, card_id in enumerate(typed_codes, 1):
 
     filename = attachment.get("filename", "")
     download_url = attachment.get("content")
-    pdf_path = os.path.join(PASTA_PDFS, filename)
     
     pdf_response = requests.get(
         download_url,
@@ -170,8 +169,8 @@ for index, card_id in enumerate(typed_codes, 1):
         total_bytes += file_size
         total_mb = total_bytes / (1024 * 1024)
         
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_response.content)
+        # Adicionar PDF diretamente ao ZIP
+        zipf.writestr(filename, pdf_response.content)
         
         pdfs_baixados += 1
         file_mb = file_size / (1024 * 1024)
@@ -193,40 +192,21 @@ for index, card_id in enumerate(typed_codes, 1):
 # Nova linha após o loop
 print()
 
+# Fechar o ZIP
+zipf.close()
+
 total_mb_final = total_bytes / (1024 * 1024)
 
-# Criar ZIP com todos os PDFs baixados
+# Verificar se o ZIP foi criado com sucesso
 if pdfs_baixados > 0:
-    print("\n📦 Criando arquivo ZIP...")
-    sys.stdout.flush()
-    
-    # Nome do arquivo ZIP no formato: os_prod dd.mm.aaaa hh-mm
-    zip_timestamp = datetime.now().strftime("%d.%m.%Y %H-%M")
-    zip_filename = f"os_prod {zip_timestamp}.zip"
-    zip_path = os.path.join(PASTA_LOGS, zip_filename)
-    
-    # Criar o ZIP
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for pdf_file in os.listdir(PASTA_PDFS):
-            if pdf_file.endswith('.pdf'):
-                pdf_path_full = os.path.join(PASTA_PDFS, pdf_file)
-                zipf.write(pdf_path_full, pdf_file)
-    
     zip_size_mb = os.path.getsize(zip_path) / (1024 * 1024)
-    print(f"✅ ZIP criado: {zip_filename} ({zip_size_mb:.2f} MB)")
-    sys.stdout.flush()
-    
-    # Limpar pasta de PDFs após criar o ZIP
-    print("🧹 Limpando pasta de PDFs...")
-    if os.path.exists(PASTA_PDFS):
-        shutil.rmtree(PASTA_PDFS)
-        os.makedirs(PASTA_PDFS, exist_ok=True)
-    print("✅ Pasta limpa!")
+    print(f"\n✅ ZIP criado: {zip_filename} ({zip_size_mb:.2f} MB)")
     sys.stdout.flush()
 else:
-    zip_path = None
-    zip_filename = None
     zip_size_mb = 0
+    # Remover ZIP vazio se não houver PDFs
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
 
 # Escrever resumo no log
 log_file.write(f"\n{'='*60}\n")
@@ -236,8 +216,7 @@ log_file.write(f"✅ Baixados: {pdfs_baixados}/{len(typed_codes)}\n")
 if pdfs_erro > 0:
     log_file.write(f"❌ Erros/Ignorados: {pdfs_erro}\n")
 log_file.write(f"💾 Total: {total_mb_final:.2f} MB\n")
-log_file.write(f"📁 Pasta PDFs: {os.path.abspath(PASTA_PDFS)}\n")
-if zip_path:
+if pdfs_baixados > 0:
     log_file.write(f"📦 ZIP: {zip_filename} ({zip_size_mb:.2f} MB)\n")
     log_file.write(f"📁 Caminho ZIP: {os.path.abspath(zip_path)}\n")
 log_file.write(f"📄 Log salvo em: {os.path.abspath(log_file_path)}\n")
