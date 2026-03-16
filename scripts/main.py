@@ -57,7 +57,9 @@ class SidebarApp:
 
     def set_window_icon(self):
         """Define o ícone da janela principal"""
-        icon_ico_path = os.path.join(os.path.dirname(__file__), "img", "icone.ico")
+        # O ícone está na pasta img/ na raiz do projeto, não em scripts/img/
+        icon_ico_path = os.path.join(os.path.dirname(__file__), "..", "img", "icone.ico")
+        icon_ico_path = os.path.normpath(icon_ico_path)
         
         if not os.path.exists(icon_ico_path):
             print(f"Ícone não encontrado: {icon_ico_path}")
@@ -351,41 +353,83 @@ class SidebarApp:
         divider = ctk.CTkFrame(card, height=1, corner_radius=0, fg_color="#3a3a3a")
         divider.pack(fill="x", padx=26, pady=(8, 10))
         
-        # Container de acoes
-        actions_frame = ctk.CTkFrame(card, corner_radius=12, fg_color="#323232")
-        actions_frame.pack(fill="both", expand=True, padx=26, pady=(0, 22))
+        # Container principal de conteúdo
+        content_container = ctk.CTkFrame(card, fg_color="transparent")
+        content_container.pack(fill="both", expand=True, padx=26, pady=(0, 22))
+        
+        # ========== SEÇÃO ROTINAS PCP ==========
+        rotinas_frame = ctk.CTkFrame(content_container, corner_radius=12, fg_color="#323232")
+        rotinas_frame.pack(fill="x", pady=(0, 12))
 
-        actions_title = ctk.CTkLabel(
-            actions_frame,
-            text="Ações PCP",
+        rotinas_title = ctk.CTkLabel(
+            rotinas_frame,
+            text="Rotinas PCP",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color="gray85"
         )
-        actions_title.pack(anchor="w", padx=18, pady=(14, 4))
+        rotinas_title.pack(anchor="w", padx=18, pady=(14, 4))
 
-        buttons_container = ctk.CTkFrame(actions_frame, fg_color="transparent")
-        buttons_container.pack(fill="x", padx=14, pady=(0, 14))
+        rotinas_buttons_container = ctk.CTkFrame(rotinas_frame, fg_color="transparent")
+        rotinas_buttons_container.pack(fill="x", padx=14, pady=(0, 14))
 
-        # Grid 2x2 com botoes uniformes e altura controlada
-        buttons_container.grid_columnconfigure(0, weight=1, uniform="pcp_col")
-        buttons_container.grid_columnconfigure(1, weight=1, uniform="pcp_col")
-        buttons_container.grid_rowconfigure((0, 1), weight=0)
+        # Grid 2 colunas para rotinas
+        rotinas_buttons_container.grid_columnconfigure(0, weight=1, uniform="rotinas_col")
+        rotinas_buttons_container.grid_columnconfigure(1, weight=1, uniform="rotinas_col")
         
-        # Definir botoes
-        button_names = [
-            "Gerar Relatório",
+        # Definir botões de rotinas
+        rotinas_buttons = [
             "Adicionar Datas",
-            "Reprogramar CONTEC",
+            "Reprogramar OS",
             "Download OS",
             "Imprimir OS"
         ]
         
-        # Criar botoes em grade 3x2 (2 colunas, até 3 linhas)
-        for i, btn_name in enumerate(button_names):
+        # Criar botões em grade 2x2
+        for i, btn_name in enumerate(rotinas_buttons):
             row = i // 2
             col = i % 2
             btn = ctk.CTkButton(
-                buttons_container,
+                rotinas_buttons_container,
+                text=btn_name,
+                height=42,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                corner_radius=8,
+                fg_color="#1f6aa5",
+                hover_color="#2f7dc2",
+                command=lambda name=btn_name: self.pcp_routine_action(name)
+            )
+            btn.grid(row=row, column=col, padx=6, pady=6, sticky="ew")
+        
+        # ========== SEÇÃO RELATÓRIOS ==========
+        relatorios_frame = ctk.CTkFrame(content_container, corner_radius=12, fg_color="#323232")
+        relatorios_frame.pack(fill="x", pady=(0, 0))
+
+        relatorios_title = ctk.CTkLabel(
+            relatorios_frame,
+            text="Relatórios",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="gray85"
+        )
+        relatorios_title.pack(anchor="w", padx=18, pady=(14, 4))
+
+        relatorios_buttons_container = ctk.CTkFrame(relatorios_frame, fg_color="transparent")
+        relatorios_buttons_container.pack(fill="x", padx=14, pady=(0, 14))
+
+        # Grid 2 colunas para relatórios
+        relatorios_buttons_container.grid_columnconfigure(0, weight=1, uniform="relatorios_col")
+        relatorios_buttons_container.grid_columnconfigure(1, weight=1, uniform="relatorios_col")
+        
+        # Definir botões de relatórios
+        relatorios_buttons = [
+            "Gerar Relatório"
+        ]
+        
+        # Criar botões de relatórios
+        for i, btn_name in enumerate(relatorios_buttons):
+            row = i // 2
+            col = i % 2
+            btn = ctk.CTkButton(
+                relatorios_buttons_container,
                 text=btn_name,
                 height=42,
                 font=ctk.CTkFont(size=13, weight="bold"),
@@ -515,9 +559,13 @@ class SidebarApp:
     
     def show_success_message(self, script_name, file_path=None):
         """Mostra mensagem de sucesso no popup"""
+        print(f"show_success_message chamado: script_name={script_name}, file_path={file_path}")
         if hasattr(self, 'loading_popup') and self.loading_popup:
             # Ajustar altura do popup para caber todos os elementos
-            self.loading_popup.geometry("350x220")
+            if file_path and file_path.endswith('.xlsx') and os.path.exists(file_path):
+                self.loading_popup.geometry("380x240")  # Maior para acomodar ambos os botões
+            else:
+                self.loading_popup.geometry("350x220")
             
             # Limpar widgets existentes
             for widget in self.loading_popup.winfo_children():
@@ -545,7 +593,8 @@ class SidebarApp:
             buttons_frame.pack(pady=20)
             
             # Botão abrir Excel (se houver caminho e for arquivo Excel)
-            if file_path and file_path.endswith('.xlsx'):
+            if file_path and file_path.endswith('.xlsx') and os.path.exists(file_path):
+                print(f"Criando botão 'Abrir Excel' para: {file_path}")
                 view_btn = ctk.CTkButton(
                     buttons_frame,
                     text="Abrir Excel",
@@ -555,6 +604,8 @@ class SidebarApp:
                     font=ctk.CTkFont(size=13, weight="bold")
                 )
                 view_btn.pack(side="left", padx=5)
+            else:
+                print(f"Botão 'Abrir Excel' não criado. file_path={file_path}, existe={os.path.exists(file_path) if file_path else False}")
             
             # Botão fechar
             close_btn = ctk.CTkButton(
@@ -1260,22 +1311,33 @@ class SidebarApp:
             finally:
                 success_output_file = output_file
 
-                # Para "Gerar Relatório", localizar o arquivo mais recente em src/temp/jira_cards
+                # Para "Gerar Relatório", localizar o arquivo mais recente em src/temp/jira_cards/relatorios
                 if script_name == "Gerar Relatório":
-                    report_dir = os.path.join("src", "temp", "jira_cards")
+                    report_dir = os.path.join("src", "temp", "jira_cards", "relatorios")
+                    print(f"Procurando relatórios em: {report_dir}")
                     try:
                         os.makedirs(report_dir, exist_ok=True)
                         if os.path.isdir(report_dir):
+                            all_files = os.listdir(report_dir)
+                            print(f"Arquivos na pasta: {all_files}")
                             candidates = [
                                 os.path.join(report_dir, name)
-                                for name in os.listdir(report_dir)
+                                for name in all_files
                                 if name.startswith("jira_cards ") and name.endswith(".xlsx")
                             ]
+                            print(f"Candidatos encontrados: {candidates}")
                             if candidates:
                                 success_output_file = max(candidates, key=os.path.getmtime)
                                 print(f"Relatório mais recente encontrado: {success_output_file}")
+                                print(f"Arquivo existe? {os.path.exists(success_output_file)}")
+                            else:
+                                print(f"Nenhum arquivo Excel encontrado em: {report_dir}")
                     except Exception as e:
                         print(f"Erro ao localizar relatório gerado: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                print(f"success_output_file final: {success_output_file}")
 
                 # Parar simulação, completar progresso
                 self.script_running = False
@@ -1322,6 +1384,7 @@ class SidebarApp:
                         self.root.after(200, lambda: self.show_success_message(script_name, output_file))
                 else:
                     # Para outros scripts, mostrar mensagem de sucesso
+                    print(f"Chamando show_success_message com script_name={script_name}, success_output_file={success_output_file}")
                     self.root.after(200, lambda: self.show_success_message(script_name, success_output_file))
         
         # Mostrar popup e iniciar execução em thread separada
@@ -1413,10 +1476,10 @@ class SidebarApp:
         self.root.wait_window(popup)
         return result["card_ids"]
 
-    def request_target_date_for_contec(self):
-        """Solicita a data de previsão para atualização dos cards do CONTEC."""
+    def request_target_date(self):
+        """Solicita a data de previsão para atualização dos cards."""
         popup = ctk.CTkToplevel(self.root)
-        popup.title("Reprogramar CONTEC")
+        popup.title("Reprogramar Datas")
         popup.geometry("420x190")
         popup.resizable(False, False)
         popup.transient(self.root)
@@ -1474,7 +1537,7 @@ class SidebarApp:
             raw_date = date_entry.get().strip()
             parsed_date = parse_date_to_iso(raw_date)
             if not parsed_date:
-                print("Data inválida para Reprogramar CONTEC. Use DD/MM/AAAA ou AAAA-MM-DD.")
+                print("Data inválida para Reprogramar Datas. Use DD/MM/AAAA ou AAAA-MM-DD.")
                 return
             result["date"] = parsed_date
             popup.destroy()
@@ -1514,8 +1577,8 @@ class SidebarApp:
         
         if routine_name == "Gerar Relatório":
             # Executar o script jira_cards.py com popup de carregamento
-            script_path = os.path.join("scripts", "jira_cards.py")
-            output_file = os.path.join("src", "temp", "jira_cards")
+            script_path = os.path.join("scripts", "jira_cards", "jira_cards.py")
+            output_file = os.path.join("src", "temp", "jira_cards", "relatorios")
             os.makedirs(output_file, exist_ok=True)
             self.run_script_with_loading(script_path, "Gerar Relatório", output_file)
         
@@ -1523,38 +1586,32 @@ class SidebarApp:
             # Executar função diretamente ao invés de subprocess
             self.run_update_dates_with_loading()
 
-        elif routine_name == "Reprogramar CONTEC":
+        elif routine_name == "Reprogramar OS":
             # Solicitar IDs e data antes de executar script de reprogramação CONTEC
             card_ids_to_update = self.request_card_ids_to_print()
-            print(f"IDs retornados para Reprogramar CONTEC: {card_ids_to_update}")
+            print(f"IDs retornados para Reprogramar OS: {card_ids_to_update}")
 
             if not card_ids_to_update:
-                print("Execução cancelada: nenhum ID informado para Reprogramar CONTEC.")
+                print("Execução cancelada: nenhum ID informado para Reprogramar OS.")
                 return
 
-            target_date = self.request_target_date_for_contec()
-            print(f"Data retornada para Reprogramar CONTEC: {target_date}")
+            target_date = self.request_target_date()
+            print(f"Data retornada para Reprogramar OS: {target_date}")
 
             if not target_date:
-                print("Execução cancelada: nenhuma data válida informada para Reprogramar CONTEC.")
+                print("Execução cancelada: nenhuma data válida informada para Reprogramar OS.")
                 return
 
-            script_candidates = [
-                os.path.join("scripts", "data_update", "update_contec.py"),
-                os.path.join("scripts", "data_update", "uptade_contec.py")
-            ]
-            script_path = next((path for path in script_candidates if os.path.exists(path)), None)
+            script_path = os.path.join("scripts", "data_update", "update_contec.py")
 
-            if not script_path:
-                print("Script de reprogramação CONTEC não encontrado.")
-                print("Caminhos esperados:")
-                for candidate in script_candidates:
-                    print(f"  - {candidate}")
+            if not os.path.exists(script_path):
+                print("Script de reprogramação OS não encontrado.")
+                print(f"Caminho esperado: {script_path}")
                 return
 
             self.run_script_with_loading(
                 script_path,
-                "Reprogramar CONTEC",
+                "Reprogramar OS",
                 script_args=["--ids", ",".join(card_ids_to_update), "--date", target_date]
             )
 
@@ -1585,7 +1642,7 @@ class SidebarApp:
             print(">>> BOTÃO IMPRIMIR OS CLICADO <<<")
             print("="*60)
             # Executar script de impressão em massa de PDFs
-            script_path = os.path.join("scripts", "print_ops.py")
+            script_path = os.path.join("scripts", "download_ops", "print_ops.py")
             print(f"Caminho do script: {script_path}")
             print(f"Script existe? {os.path.exists(script_path)}")
             
@@ -1605,7 +1662,7 @@ class SidebarApp:
             print("Rotinas disponíveis:")
             print("  - Gerar Relatório")
             print("  - Adicionar Datas")
-            print("  - Reprogramar CONTEC")
+            print("  - Reprogramar OS")
             print("  - Download OS")
             print("  - Imprimir OS")
         
