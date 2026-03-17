@@ -1,0 +1,44 @@
+======================================================================
+GERAÇÃO DE ESPELHOS - INICIADO
+2026-03-16 15:20:33
+======================================================================
+
+Total de cards a processar: 3
+IDs: TENSYLON-819, TENSYLON-815, TENSYLON-728
+
+======================================================================
+
+[1/3] Processando TENSYLON-819...
+   ✅ Dados extraídos
+   Veiculo: LAND ROVER - DEFENDER 110 SUV - 2026
+   Teto: TETO SOLAR PANORÂMICO EM VIDRO
+   Ano: 2026
+   Projeto: TF00.131320
+   PEDIDO: 31084
+   ✅ Espelho gerado: 31084 16.03.2026 15-20.docx
+
+[2/3] Processando TENSYLON-815...
+   ✅ Dados extraídos
+   Veiculo: LAND ROVER - NEW DISCOVERY SUV - 2026
+   Teto: TETO SOLAR PANORÂMICO EM VIDRO
+   Ano: 2026
+   Projeto: CARBON-TF01.130917
+   PEDIDO: 30956
+   ✅ Espelho gerado: 30956 16.03.2026 15-20.docx
+
+[3/3] Processando TENSYLON-728...
+   ✅ Dados extraídos
+   Veiculo: LAND ROVER - DISCOVERY SPORT SUV - 2023
+   Teto: TETO SOLAR PANORÂMICO EM VIDRO
+   Ano: 2023
+   Projeto: TFM99.012625.PT
+   PEDIDO: 30472
+   ✅ Espelho gerado: 30472 16.03.2026 15-20.docx
+
+======================================================================
+✅ PROCESSAMENTO CONCLUÍDO
+2026-03-16 15:20:37
+======================================================================
+Cards processados: 3/3
+Espelhos gerados: 3
+Pasta de saída: src\temp\espelhos\arquivos

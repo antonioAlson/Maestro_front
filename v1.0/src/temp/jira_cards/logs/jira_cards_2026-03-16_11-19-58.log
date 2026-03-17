@@ -1,0 +1,29 @@
+============================================================
+EXPORTAÇÃO DE CARTÕES JIRA - INICIADO
+2026-03-16 11:19:58
+============================================================
+
+📊 Filtro JQL aplicado:
+(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia")) OR (project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia", "Aguardando Acabamento", "Aguardando Autoclave", "Aguardando Corte", "Aguardando montagem"))
+
+============================================================
+
+📄 Página processada: 51 cartões coletados
+📄 Página processada: 116 cartões coletados
+📄 Página processada: 124 cartões coletados
+
+✅ Total de cartões coletados: 124
+
+============================================================
+
+📝 Criando arquivo Excel...
+🔗 Hyperlinks adicionados na coluna 'Chave'
+💾 Arquivo salvo: src\temp\jira_cards\relatorios\jira_cards 16.03.2026 11.20.xlsx
+
+============================================================
+CONCLUÍDO - 2026-03-16 11:20:01
+============================================================
+✅ Total de cartões exportados: 124
+📁 Arquivo Excel: C:\Users\guarino.silva\Documents\Maestro\src\temp\jira_cards\relatorios\jira_cards 16.03.2026 11.20.xlsx
+📄 Log salvo em: C:\Users\guarino.silva\Documents\Maestro\src\temp\jira_cards\logs\jira_cards_2026-03-16_11-19-58.log
+============================================================

@@ -1,0 +1,62 @@
+======================================================================
+GERAÇÃO DE ESPELHOS - INICIADO
+2026-03-16 15:41:37
+======================================================================
+
+Total de cards a processar: 5
+IDs: TENSYLON-825, TENSYLON-824, TENSYLON-823, TENSYLON-820, TENSYLON-819
+
+======================================================================
+
+[1/5] Processando TENSYLON-825...
+   ✅ Dados extraídos
+   Veiculo: HONDA - NEW HR-V SUV - 2026
+   Teto: SEM TETO SOLAR
+   Ano: 2026
+   Projeto: TP00.080122
+   PEDIDO: 31131
+   ✅ Espelho gerado: 31131 16.03.2026 15-41.docx
+
+[2/5] Processando TENSYLON-824...
+   ✅ Dados extraídos
+   Veiculo: BMW - M3 SEDAN - 2026
+   Teto: SEM TETO SOLAR
+   Ano: 2026
+   Projeto: TF01.030219
+   PEDIDO: 31111
+   ✅ Espelho gerado: 31111 16.03.2026 15-41.docx
+
+[3/5] Processando TENSYLON-823...
+   ✅ Dados extraídos
+   Veiculo: BYD - SONG PREMIUM SUV - 2026
+   Teto: TETO SOLAR PANORAMICO OPACO FUNCIONAL
+   Ano: 2026
+   Projeto: TP02.311325
+   PEDIDO: 30943 - ALT
+   ✅ Espelho gerado: 30943 - ALT 16.03.2026 15-41.docx
+
+[4/5] Processando TENSYLON-820...
+   ✅ Dados extraídos
+   Veiculo: BMW - X1 SUV - 2026
+   Teto: TETO SOLAR PANORÂMICO EM VIDRO
+   Ano: 2026
+   Projeto: TF17.031023
+   PEDIDO: 31088
+   ✅ Espelho gerado: 31088 16.03.2026 15-41.docx
+
+[5/5] Processando TENSYLON-819...
+   ✅ Dados extraídos
+   Veiculo: LAND ROVER - DEFENDER 110 SUV - 2026
+   Teto: TETO SOLAR PANORÂMICO EM VIDRO
+   Ano: 2026
+   Projeto: TF00.131320
+   PEDIDO: 31084
+   ✅ Espelho gerado: 31084 16.03.2026 15-41.docx
+
+======================================================================
+✅ PROCESSAMENTO CONCLUÍDO
+2026-03-16 15:41:43
+======================================================================
+Cards processados: 5/5
+Espelhos gerados: 5
+Pasta de saída: src\temp\espelhos\arquivos
