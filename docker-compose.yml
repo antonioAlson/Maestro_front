@@ -1,0 +1,7 @@
+services:
+  maestro-frontend:
+    build: .
+    container_name: maestro_frontend
+    ports:
+      - "4200:80"
+    restart: always
